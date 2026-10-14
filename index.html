@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>TREETOP · from twig to treetop</title>
+<meta name="description" content="You are a sprout racing the seasons. Grow to the treetop before winter.">
+<style>
+  :root{
+    --ink:#f3efe4; --ink-dim:#cfc9b8; --accent:#ffc95e; --leaf:#7ed492;
+    --panel:rgba(16,26,20,.82); --panel-edge:rgba(243,239,228,.16);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#0c1710}
+  body{font-family:ui-rounded,"Avenir Next","Segoe UI",system-ui,sans-serif;color:var(--ink);
+       -webkit-user-select:none;user-select:none;touch-action:none}
+  canvas{display:block;width:100vw;height:100vh;cursor:crosshair}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .4s}
+  #hud.on{opacity:1}
+  .hud-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
+           align-items:flex-start;padding:14px 18px;gap:12px}
+  .stat{background:var(--panel);border:1px solid var(--panel-edge);border-radius:12px;
+        padding:8px 14px;backdrop-filter:blur(6px);min-width:118px}
+  .stat .k{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-dim)}
+  .stat .v{font-size:24px;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums}
+  .stat .v small{font-size:13px;font-weight:600;color:var(--ink-dim)}
+  #sapwrap{min-width:170px}
+  #sapbar{height:9px;border-radius:99px;background:rgba(243,239,228,.14);margin-top:6px;overflow:hidden}
+  #sapfill{height:100%;width:100%;border-radius:99px;background:linear-gradient(90deg,#58b368,#a7e08a);
+           transition:width .18s linear}
+  #sapfill.low{background:linear-gradient(90deg,#d96b4f,#ffc95e)}
+  #seasonwrap{flex:0 1 340px;text-align:center}
+  #seasonbar{height:9px;border-radius:99px;background:rgba(243,239,228,.14);margin-top:6px;overflow:hidden}
+  #seasonfill{height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,#ffd97a,#ff9d5c,#8fb7d9)}
+  #windstat{text-align:right;min-width:104px}
+  #windarrow{display:inline-block;font-size:20px;line-height:1}
+  .hud-bottom{position:absolute;left:0;right:0;bottom:12px;display:flex;justify-content:center}
+  #hint{font-size:13px;color:var(--ink-dim);background:var(--panel);border:1px solid var(--panel-edge);
+        padding:6px 14px;border-radius:99px;backdrop-filter:blur(6px)}
+  #hint b{color:var(--ink)}
+  #toast{position:absolute;top:22%;left:50%;transform:translateX(-50%);font-size:clamp(20px,4vw,34px);
+         font-weight:800;letter-spacing:.02em;text-shadow:0 2px 18px rgba(0,0,0,.55);opacity:0;
+         transition:opacity .3s, transform .3s;white-space:nowrap}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(-6px)}
+
+  /* ---------- Overlays ---------- */
+  .screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+          background:radial-gradient(120% 90% at 50% 10%,rgba(10,20,14,.18),rgba(6,12,9,.66));
+          opacity:0;pointer-events:none;transition:opacity .35s;padding:18px}
+  .screen.on{opacity:1;pointer-events:auto}
+  .card{max-width:620px;width:100%;text-align:center;background:var(--panel);
+        border:1px solid var(--panel-edge);border-radius:22px;padding:34px 34px 28px;
+        backdrop-filter:blur(10px);box-shadow:0 30px 80px rgba(0,0,0,.45)}
+  .eyebrow{font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  h1{font-size:clamp(46px,9vw,76px);letter-spacing:.06em;line-height:.98;margin:8px 0 2px;font-weight:900}
+  h1 .top{color:var(--leaf)}
+  .tagline{font-style:italic;color:var(--ink-dim);margin-bottom:18px}
+  .howto{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;text-align:left;margin:0 auto 20px;max-width:480px}
+  .howto div{font-size:14px;line-height:1.45;color:var(--ink-dim)}
+  .howto b{color:var(--ink)}
+  .howto .dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:7px;vertical-align:-1px}
+  .btn{pointer-events:auto;cursor:pointer;border:0;border-radius:99px;padding:14px 34px;
+       font:700 17px/1 ui-rounded,"Avenir Next","Segoe UI",system-ui,sans-serif;letter-spacing:.02em;
+       background:linear-gradient(180deg,#ffd97a,#ffb84f);color:#2c1c05;
+       box-shadow:0 10px 26px rgba(255,184,79,.35),inset 0 1px 0 rgba(255,255,255,.6)}
+  .btn:hover{filter:brightness(1.06)} .btn:active{transform:translateY(1px)}
+  .keys{margin-top:16px;font-size:12.5px;color:var(--ink-dim)}
+  .keys b{color:var(--ink);background:rgba(243,239,228,.12);border-radius:5px;padding:1px 6px}
+  #finalstats{display:flex;gap:10px;justify-content:center;margin:14px 0 20px;flex-wrap:wrap}
+  #finalstats .stat{min-width:104px}
+  #bestline{font-size:13px;color:var(--accent);min-height:18px;margin-top:10px;font-weight:600}
+  .hidden{display:none!important}
+  @media (max-width:560px){ .howto{grid-template-columns:1fr} .stat .v{font-size:19px} #sapwrap{min-width:130px} }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="hud-top">
+    <div class="stat"><div class="k">Height</div><div class="v"><span id="hval">0</span><small> / 120 m</small></div></div>
+    <div class="stat" id="seasonwrap"><div class="k" id="seasonlabel">Spring</div>
+      <div id="seasonbar"><div id="seasonfill"></div></div></div>
+    <div class="stat" id="sapwrap"><div class="k">Sap</div><div id="sapbar"><div id="sapfill"></div></div></div>
+    <div class="stat" id="windstat"><div class="k">Wind</div><div class="v"><span id="windarrow">→</span></div></div>
+  </div>
+  <div id="toast"></div>
+  <div class="hud-bottom"><div id="hint">Steer with your <b>mouse</b> or <b>finger</b> · the branch grows toward it</div></div>
+</div>
+
+<div class="screen on" id="title">
+  <div class="card">
+    <div class="eyebrow">A tiny race against the seasons</div>
+    <h1>TREE<span class="top">TOP</span></h1>
+    <div class="tagline">from twig to treetop</div>
+    <div class="howto">
+      <div><b>Grow.</b> Your branch never stops. Steer its tip with the mouse, touch, or arrow keys.</div>
+      <div><span class="dot" style="background:#ffd95e"></span><b>Sunlight</b> feeds your sap. No sap, no growth.</div>
+      <div><span class="dot" style="background:#8fd0ff"></span><b>Rain</b> is a drink on the way up. Catch the drops.</div>
+      <div><span class="dot" style="background:#3d4a42"></span><b>Shade</b> drains you, <b>wind</b> bends you, rival branches block you.</div>
+    </div>
+    <button class="btn" id="playbtn">Start growing</button>
+    <div id="bestline"></div>
+    <div class="keys"><b>P</b> pause &nbsp; <b>M</b> sound &nbsp; <b>R</b> restart</div>
+  </div>
+</div>
+
+<div class="screen" id="over">
+  <div class="card">
+    <div class="eyebrow" id="over-eyebrow">Winter came</div>
+    <h1 id="over-title" style="font-size:clamp(34px,7vw,54px)">The frost got there first</h1>
+    <div class="tagline" id="over-line">So close to the light.</div>
+    <div id="finalstats">
+      <div class="stat"><div class="k">Height</div><div class="v" id="f-height">0 m</div></div>
+      <div class="stat"><div class="k">Sunlight</div><div class="v" id="f-sun">0</div></div>
+      <div class="stat"><div class="k">Rain</div><div class="v" id="f-rain">0</div></div>
+      <div class="stat"><div class="k">Best</div><div class="v" id="f-best">0 m</div></div>
+    </div>
+    <button class="btn" id="againbtn">One more go</button>
+    <div class="keys">or press <b>R</b></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ================================================================
+   TREETOP · from twig to treetop
+   You are a sprout. Grow 120 m to the canopy before winter.
+   One file, no assets: art is procedural, sound is synthesized.
+   ================================================================ */
+const cvs = document.getElementById('game');
+const ctx = cvs.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cvs.width = Math.round(W * DPR); cvs.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize); resize();
+
+/* ---------------- constants ---------------- */
+const GOAL_Y   = 3000;          // px of world to the canopy  (= 120 m)
+const PX_PER_M = GOAL_Y / 120;
+const SEASON_S = 150;           // seconds from spring to winter
+const GROW_SPEED = 108;         // px/s
+const TURN_RATE  = 3.4;         // rad/s toward the pointer
+const SAP_MAX = 100, SAP_DRAIN = 5.2, SHADE_DRAIN = 17;
+const ORB_GAIN = 17, DROP_GAIN = 10;
+
+/* ---------------- seeded rng (the course is the same for everyone) ---------------- */
+function mulberry32(seed){
+  let a = seed >>> 0;
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ---------------- world ---------------- */
+const world = { orbs: [], drops: [], shades: [], rivals: [], leaves: [] };
+function buildWorld(){
+  const rnd = mulberry32(20261014);
+  world.orbs.length = 0; world.drops.length = 0; world.shades.length = 0; world.rivals.length = 0;
+  // sunlight orbs: a loose trail all the way up
+  for (let y = 210; y < GOAL_Y - 60; y += 120 + rnd() * 90){
+    world.orbs.push({ x: (rnd() * 2 - 1) * 340, y, taken: false, ph: rnd() * 6.28 });
+  }
+  // rain bands: drops fall and respawn inside two altitude bands
+  for (let i = 0; i < 26; i++){
+    const band = i % 2 === 0 ? [700, 1500] : [1700, 2500];
+    world.drops.push({ x: (rnd() * 2 - 1) * 380, y: band[0] + rnd() * (band[1] - band[0]),
+                       vy: 130 + rnd() * 90, band, taken: false });
+  }
+  // shade clouds drifting sideways
+  for (let y = 520; y < GOAL_Y - 200; y += 330 + rnd() * 160){
+    world.shades.push({ x: (rnd() * 2 - 1) * 260, y, rx: 150 + rnd() * 130, ry: 52 + rnd() * 26,
+                         sp: (rnd() * 2 - 1) * 14, ph: rnd() * 6.28 });
+  }
+  // rival trees: a trunk line with a few branch arcs; collision = circles along them
+  for (let i = 0; i < 7; i++){
+    const side = i % 2 === 0 ? -1 : 1;
+    const baseY = 420 + i * 390 + rnd() * 120;
+    const trunkX = side * (300 + rnd() * 120);
+    const pts = [];
+    for (let s = 0; s <= 10; s++){
+      const t = s / 10;
+      pts.push({ x: trunkX - side * t * t * 300, y: baseY + t * 300, r: 17 - t * 6 });
+    }
+    world.rivals.push({ pts, side, baseY });
+  }
+}
+
+/* ---------------- game state ---------------- */
+const S = {
+  mode: 'title',            // title | play | pause | over
+  time: 0, season: 0,       // season: 0..1 across SEASON_S
+  tip: { x: 0, y: 0 }, heading: -Math.PI / 2,
+  path: [],                 // branch polyline {x,y}
+  sap: SAP_MAX, height: 0, suns: 0, rains: 0,
+  camY: 0, wind: 0, shake: 0, inShade: false,
+  pointer: null,            // {x, y} screen coords while steering by pointer
+  keys: {}, muted: false, won: false, dead: '',
+  best: +(localStorage.getItem('treetop-best') || 0),
+};
+function reset(){
+  buildWorld();
+  S.time = 0; S.season = 0; S.sap = SAP_MAX;
+  S.tip = { x: 0, y: 6 }; S.heading = -Math.PI / 2;
+  S.path = [{ x: 0, y: 0 }, { x: 0, y: 6 }];
+  S.height = 0; S.suns = 0; S.rains = 0; S.camY = 0; S.shake = 0;
+  S.won = false; S.dead = ''; S.inShade = false;
+  world.leaves.length = 0;
+}
+
+/* ---------------- sound (all synthesized, no files) ---------------- */
+let AC = null, master = null;
+function audio(){
+  if (AC) return AC;
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain(); master.gain.value = 0.5; master.connect(AC.destination);
+  } catch (e) { AC = null; }
+  return AC;
+}
+function tone(freq, dur, type, vol, slideTo){
+  if (!AC || S.muted) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type || 'triangle'; o.frequency.setValueAtTime(freq, t);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+const sndOrb  = () => { tone(880, 0.16, 'triangle', 0.20); setTimeout(() => tone(1318, 0.22, 'triangle', 0.16), 45); };
+const sndDrop = () => tone(520, 0.18, 'sine', 0.22, 240);
+const sndBump = () => tone(140, 0.14, 'square', 0.10, 90);
+const sndWin  = () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, 0.34, 'triangle', 0.18), i * 110));
+const sndLose = () => [392, 330, 262].forEach((f, i) => setTimeout(() => tone(f, 0.3, 'sine', 0.16), i * 140));
+
+/* ---------------- input ---------------- */
+const keysDown = {};
+window.addEventListener('keydown', e => {
+  keysDown[e.key.toLowerCase()] = true;
+  if (e.key === ' ' || e.key.startsWith('Arrow')) e.preventDefault();
+  if (S.mode === 'title' && (e.key === ' ' || e.key === 'Enter')) startGame();
+  else if (S.mode === 'over' && (e.key.toLowerCase() === 'r' || e.key === ' ' || e.key === 'Enter')) startGame();
+  else if (S.mode === 'play' && e.key.toLowerCase() === 'p') pauseGame(true);
+  else if (S.mode === 'pause' && (e.key.toLowerCase() === 'p' || e.key === 'Escape')) pauseGame(false);
+  else if (S.mode === 'play' && e.key.toLowerCase() === 'r') startGame();
+  if (e.key.toLowerCase() === 'm') { S.muted = !S.muted; toast(S.muted ? 'Sound off' : 'Sound on'); }
+});
+window.addEventListener('keyup', e => { keysDown[e.key.toLowerCase()] = false; });
+function setPointer(e){ S.pointer = { x: e.clientX, y: e.clientY }; }
+cvs.addEventListener('pointerdown', e => { setPointer(e); cvs.setPointerCapture(e.pointerId); });
+cvs.addEventListener('pointermove', e => { if (e.buttons || e.pointerType === 'touch') setPointer(e); else setPointer(e); });
+cvs.addEventListener('pointerup', () => { S.pointer = null; });
+cvs.addEventListener('pointercancel', () => { S.pointer = null; });
+document.getElementById('playbtn').addEventListener('click', startGame);
+document.getElementById('againbtn').addEventListener('click', startGame);
+
+/* ---------------- flow ---------------- */
+const $ = id => document.getElementById(id);
+function show(id, on){ $(id).classList.toggle('on', on); }
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show');
+                     clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1500); }
+function startGame(){
+  audio(); if (AC && AC.state === 'suspended') AC.resume();
+  reset(); S.mode = 'play';
+  show('title', false); show('over', false); $('hud').classList.add('on');
+  toast('Grow! Reach the light');
+}
+function pauseGame(on){ S.mode = on ? 'pause' : 'play'; toast(on ? 'Paused' : 'Growing'); }
+function endGame(won, why){
+  S.mode = 'over'; S.won = won;
+  const h = Math.floor(S.height);
+  if (h > S.best) { S.best = h; localStorage.setItem('treetop-best', String(h)); }
+  $('over-eyebrow').textContent = won ? 'You made it' : (why === 'sap' ? 'Out of sap' : 'Winter came');
+  $('over-title').textContent = won ? 'Treetop!' : (why === 'sap' ? 'The little sprout withered' : 'The frost got there first');
+  $('over-line').textContent = won
+    ? 'One small sprout, all the way to the light. Thanks for playing.'
+    : (h > 100 ? 'So close to the light. One more go?' : 'The canopy is 120 m up. The sun orbs are the way.');
+  $('f-height').textContent = h + ' m';
+  $('f-sun').textContent = S.suns; $('f-rain').textContent = S.rains; $('f-best').textContent = S.best + ' m';
+  show('over', true);
+  if (won) sndWin(); else sndLose();
+}
+function bestLine(){
+  $('bestline').textContent = S.best > 0 ? 'Your best climb: ' + S.best + ' m' : '';
+}
+
+/* ---------------- particles ---------------- */
+const parts = [];
+function burst(x, y, color, n, spd){
+  for (let i = 0; i < n; i++){
+    const a = Math.random() * 6.283, v = (0.3 + Math.random() * 0.7) * (spd || 90);
+    parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v + 30, life: 0.7 + Math.random() * 0.4, t: 0, color, r: 1.6 + Math.random() * 2.2 });
+  }
+}
+
+/* ---------------- update ---------------- */
+function windAt(y, t){
+  const alt = Math.min(1, y / GOAL_Y);
+  return (Math.sin(t * 0.6) * 0.55 + Math.sin(t * 1.7 + 1.3) * 0.3) * (0.12 + alt * 0.75);
+}
+function update(dt){
+  S.time += dt;
+  S.season = Math.min(1, S.time / SEASON_S);
+  S.wind = windAt(S.tip.y, S.time);
+
+  // steering: pointer wins, else keys, else drift straight with the wind
+  let want = null;
+  if (S.pointer){
+    const dx = S.pointer.x - sx(S.tip.x), dy = S.pointer.y - sy(S.tip.y);
+    if (Math.hypot(dx, dy) > 14) want = Math.atan2(dy, dx);
+  }
+  if (want === null){
+    if (keysDown['arrowleft'] || keysDown['a']) want = S.heading - 1.2;
+    if (keysDown['arrowright'] || keysDown['d']) want = S.heading + 1.2;
+    if (keysDown['arrowup'] || keysDown['w']) want = -Math.PI / 2;
+  }
+  if (want !== null){
+    let d = want - S.heading;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    const maxTurn = TURN_RATE * dt;
+    S.heading += Math.max(-maxTurn, Math.min(maxTurn, d));
+  }
+  S.heading += S.wind * dt * 0.9;                       // the wind bends the branch
+  S.heading = Math.max(-Math.PI * 0.92, Math.min(-Math.PI * 0.08, S.heading)); // never grow into the ground
+
+  // shade test
+  S.inShade = false;
+  for (const sh of world.shades){
+    sh.x += Math.sin(S.time * 0.24 + sh.ph) * sh.sp * dt + sh.sp * dt * 0.4;
+    if (sh.x > 470) sh.x = -470; if (sh.x < -470) sh.x = 470;
+    const nx = (S.tip.x - sh.x) / sh.rx, ny = (S.tip.y - sh.y) / sh.ry;
+    if (nx * nx + ny * ny < 1) S.inShade = true;
+  }
+
+  // growth
+  const speed = GROW_SPEED * (S.inShade ? 0.45 : 1);
+  // heading is a screen-space angle (-PI/2 = straight up); world y is up
+  S.tip.x += Math.cos(S.heading) * speed * dt;
+  S.tip.y += -Math.sin(S.heading) * speed * dt;
+  S.tip.y = Math.max(S.tip.y, 4);
+  S.tip.x = Math.max(-430, Math.min(430, S.tip.x));
+  const last = S.path[S.path.length - 1];
+  if (Math.hypot(S.tip.x - last.x, S.tip.y - last.y) > 7){
+    S.path.push({ x: S.tip.x, y: S.tip.y });
+    if (Math.random() < 0.34) world.leaves.push({ x: S.tip.x, y: S.tip.y, a: S.heading + (Math.random() < 0.5 ? 0.9 : -0.9), s: 5 + Math.random() * 6, ph: Math.random() * 6.28 });
+    if (S.path.length > 900) S.path.splice(0, S.path.length - 900);
+  }
+  S.height = Math.max(S.height, S.tip.y / PX_PER_M);
+
+  // sap
+  S.sap -= (SAP_DRAIN + (S.inShade ? SHADE_DRAIN : 0)) * dt;
+  if (S.sap <= 0){ S.sap = 0; endGame(false, 'sap'); return; }
+
+  // rain drops fall inside their bands
+  for (const d of world.drops){
+    d.y -= d.vy * dt;
+    if (d.y < d.band[0]) { d.y = d.band[1]; d.x = (Math.random() * 2 - 1) * 380; }
+  }
+  // pickups
+  for (const o of world.orbs){
+    if (!o.taken && Math.abs(o.y - S.tip.y) < 30 && Math.abs(o.x - S.tip.x) < 30){
+      o.taken = true; S.suns++; S.sap = Math.min(SAP_MAX, S.sap + ORB_GAIN);
+      burst(o.x, o.y, '#ffd95e', 10, 110); sndOrb();
+    }
+  }
+  for (const d of world.drops){
+    if (Math.abs(d.y - S.tip.y) < 26 && Math.abs(d.x - S.tip.x) < 24){
+      d.y = d.band[1]; d.x = (Math.random() * 2 - 1) * 380; S.rains++;
+      S.sap = Math.min(SAP_MAX, S.sap + DROP_GAIN);
+      burst(S.tip.x, S.tip.y, '#8fd0ff', 8, 80); sndDrop();
+    }
+  }
+  // rival branches: bump
+  for (const r of world.rivals){
+    for (const p of r.pts){
+      const dd = Math.hypot(S.tip.x - p.x, S.tip.y - p.y);
+      if (dd < p.r + 8){
+        S.sap -= 26 * dt; S.shake = Math.min(7, S.shake + 22 * dt);
+        S.heading += (S.tip.x < p.x ? -1 : 1) * 1.6 * dt;
+        if (Math.random() < dt * 6) sndBump();
+      }
+    }
+  }
+  // camera follows, gently
+  const targetCam = Math.max(0, S.tip.y - H * 0.38);
+  S.camY += (targetCam - S.camY) * Math.min(1, dt * 3.2);
+  // particles
+  for (let i = parts.length - 1; i >= 0; i--){
+    const p = parts[i]; p.t += dt;
+    if (p.t > p.life) { parts.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 130 * dt;
+  }
+  // win / winter
+  if (S.tip.y >= GOAL_Y) endGame(true);
+  else if (S.season >= 1) endGame(false, 'winter');
+}
+
+/* ---------------- view transform ---------------- */
+function xs(){ return Math.min(1, (W / 2 - 14) / 460); }       // horizontal squeeze on narrow screens
+function sx(x){ return W / 2 + x * xs(); }
+function sy(y){ return H * 0.68 - (y - S.camY); }
+
+/* ---------------- render ---------------- */
+function lerp(a, b, t){ return a + (b - a) * t; }
+function mixc(c1, c2, t){
+  return [Math.round(lerp(c1[0], c2[0], t)), Math.round(lerp(c1[1], c2[1], t)), Math.round(lerp(c1[2], c2[2], t))];
+}
+function css(c, a){ return `rgba(${c[0]},${c[1]},${c[2]},${a === undefined ? 1 : a})`; }
+
+function drawSky(){
+  const s = S.season, alt = Math.min(1, S.camY / GOAL_Y);
+  const top = mixc(mixc([106, 156, 208], [64, 62, 110], s), [86, 140, 210], alt * 0.35);
+  const mid = mixc(mixc([178, 214, 188], [216, 132, 96], s), [170, 216, 190], alt * 0.3);
+  const low = mixc(mixc([232, 240, 208], [240, 178, 128], s), [255, 232, 168], alt * 0.45);
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, css(top)); g.addColorStop(0.55, css(mid)); g.addColorStop(1, css(low));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // the sun rides across the sky as the season turns
+  const sunX = lerp(W * 0.1, W * 0.9, s), sunY = H * 0.34 - Math.sin(s * Math.PI) * H * 0.2;
+  const glow = ctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, 130);
+  glow.addColorStop(0, 'rgba(255,236,170,0.85)'); glow.addColorStop(1, 'rgba(255,236,170,0)');
+  ctx.fillStyle = glow; ctx.fillRect(sunX - 140, sunY - 140, 280, 280);
+  ctx.fillStyle = s > 0.8 ? '#ffb37a' : '#ffe89a';
+  ctx.beginPath(); ctx.arc(sunX, sunY, 21, 0, 6.283); ctx.fill();
+}
+function drawParallax(factor, color, seed, baseR){
+  const spacing = 230, off = (S.camY * factor) % spacing;
+  ctx.fillStyle = color;
+  for (let layer = -1; layer < H / spacing + 2; layer++){
+    const yBase = layer * spacing + off;
+    for (let i = 0; i < 4; i++){
+      const rnd = mulberry32(seed + layer * 31 + i * 7)();
+      const x = (i + rnd * 0.7) * (W / 3.4) - 60, r = baseR * (0.75 + rnd * 0.6);
+      ctx.fillRect(x - 4, yBase - r * 0.4, 8, r * 1.6);
+      ctx.beginPath();
+      ctx.arc(x, yBase - r * 0.7, r, 0, 6.283);
+      ctx.arc(x - r * 0.55, yBase - r * 0.35, r * 0.66, 0, 6.283);
+      ctx.arc(x + r * 0.55, yBase - r * 0.35, r * 0.66, 0, 6.283);
+      ctx.fill();
+    }
+  }
+}
+function drawGround(){
+  const gy = sy(0);
+  if (gy < -80 || gy > H + 200) return;
+  ctx.fillStyle = '#4a3826'; ctx.fillRect(0, gy, W, H - gy + 2);
+  ctx.fillStyle = '#5d7d3a'; ctx.fillRect(0, gy - 7, W, 9);
+  ctx.fillStyle = '#6f9a48';
+  const rnd = mulberry32(99);
+  for (let i = 0; i < 46; i++){
+    const x = rnd() * W, h = 7 + rnd() * 9;
+    ctx.fillRect(x, gy - 7 - h, 2.4, h);
+    if (rnd() < 0.3){ ctx.fillStyle = ['#ffd95e', '#ff9db0', '#ffffff'][i % 3];
+      ctx.beginPath(); ctx.arc(x + 1, gy - 9 - h, 2.6, 0, 6.283); ctx.fill(); ctx.fillStyle = '#6f9a48'; }
+  }
+}
+function drawGoal(){
+  const gy = sy(GOAL_Y);
+  if (gy < -260 || gy > H + 60) return;
+  const glow = ctx.createLinearGradient(0, gy - 190, 0, gy + 30);
+  glow.addColorStop(0, 'rgba(255,224,138,0)'); glow.addColorStop(1, 'rgba(255,224,138,0.5)');
+  ctx.fillStyle = glow; ctx.fillRect(0, gy - 190, W, 220);
+  ctx.fillStyle = '#3f6030';
+  const rnd = mulberry32(7);
+  for (let i = 0; i < 16; i++){
+    const x = (i / 15) * W + (rnd() - 0.5) * 30, r = 34 + rnd() * 30;
+    ctx.beginPath(); ctx.arc(x, gy + 12 + (rnd() - 0.5) * 16, r, 0, 6.283); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,240,190,0.95)';
+  ctx.font = '700 15px ui-rounded, system-ui, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('· THE TREETOP ·', W / 2, gy - 26);
+}
+function drawWorld(){
+  drawSky();
+  drawParallax(0.3, 'rgba(46,84,54,0.5)', 1234, 52);
+  drawParallax(0.55, 'rgba(30,60,38,0.75)', 777, 74);
+  drawGround();
+  drawGoal();
+  // shade clouds
+  for (const sh of world.shades){
+    const y = sy(sh.y); if (y < -140 || y > H + 140) continue;
+    ctx.fillStyle = 'rgba(24,34,30,0.5)';
+    for (const [ox, oy, r] of [[0, 0, 1], [-0.5, 0.16, 0.72], [0.5, 0.14, 0.76], [0.1, -0.2, 0.66]]){
+      ctx.beginPath();
+      ctx.ellipse(sx(sh.x) + ox * sh.rx * xs(), y + oy * sh.ry, sh.rx * xs() * r, sh.ry * r, 0, 0, 6.283);
+      ctx.fill();
+    }
+  }
+  // rival trees
+  ctx.lineCap = 'round';
+  for (const r of world.rivals){
+    if (sy(r.baseY) < -420 || sy(r.baseY + 320) > H + 60) continue;
+    ctx.strokeStyle = '#4c3a28'; ctx.lineWidth = 15;
+    ctx.beginPath();
+    r.pts.forEach((p, i) => { const X = sx(p.x), Y = sy(p.y); i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); });
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,220,150,0.16)'; ctx.lineWidth = 4;
+    ctx.beginPath();
+    r.pts.forEach((p, i) => { const X = sx(p.x) - 4, Y = sy(p.y); i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); });
+    ctx.stroke();
+    const top = r.pts[r.pts.length - 1];
+    ctx.fillStyle = '#33512e';
+    ctx.beginPath(); ctx.arc(sx(top.x), sy(top.y) - 12, 30, 0, 6.283); ctx.fill();
+  }
+  // sunlight orbs
+  for (const o of world.orbs){
+    if (o.taken) continue;
+    const y = sy(o.y); if (y < -40 || y > H + 40) continue;
+    const X = sx(o.x), pulse = 1 + Math.sin(S.time * 3 + o.ph) * 0.12;
+    const glow = ctx.createRadialGradient(X, y, 2, X, y, 26 * pulse);
+    glow.addColorStop(0, 'rgba(255,219,94,0.9)'); glow.addColorStop(1, 'rgba(255,219,94,0)');
+    ctx.fillStyle = glow; ctx.fillRect(X - 30, y - 30, 60, 60);
+    ctx.fillStyle = '#ffd95e';
+    ctx.beginPath(); ctx.arc(X, y, 8.5 * pulse, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#fff3c4';
+    ctx.beginPath(); ctx.arc(X - 2.5, y - 2.5, 3.4, 0, 6.283); ctx.fill();
+  }
+  // rain drops
+  ctx.fillStyle = 'rgba(143,208,255,0.9)';
+  for (const d of world.drops){
+    const y = sy(d.y); if (y < -30 || y > H + 30) continue;
+    const X = sx(d.x);
+    ctx.beginPath(); ctx.ellipse(X, y, 3.4, 6.4, 0, 0, 6.283); ctx.fill();
+  }
+  // the branch
+  const n = S.path.length;
+  if (n > 1){
+    for (let i = 1; i < n; i++){
+      const p0 = S.path[i - 1], p1 = S.path[i], t = i / n;
+      ctx.strokeStyle = t > 0.92 ? '#5d8f3e' : '#6d4c2f';
+      ctx.lineWidth = lerp(8, 2.6, t);
+      ctx.beginPath(); ctx.moveTo(sx(p0.x), sy(p0.y)); ctx.lineTo(sx(p1.x), sy(p1.y)); ctx.stroke();
+    }
+  }
+  // leaves along the branch
+  for (const lf of world.leaves){
+    const y = sy(lf.y); if (y < -20 || y > H + 20) continue;
+    const sway = Math.sin(S.time * 2 + lf.ph) * 0.16;
+    ctx.save(); ctx.translate(sx(lf.x), y); ctx.rotate(lf.a + sway);
+    ctx.fillStyle = ['#69b96a', '#7ed492', '#58a85c'][(lf.ph * 10 | 0) % 3];
+    ctx.beginPath(); ctx.ellipse(lf.s * 0.7, 0, lf.s, lf.s * 0.45, 0, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+  // particles
+  for (const p of parts){
+    const a = 1 - p.t / p.life;
+    ctx.globalAlpha = a; ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), p.r, 0, 6.283); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // the growing tip: a bright sprout head
+  const tx = sx(S.tip.x), ty = sy(S.tip.y);
+  const hg = ctx.createRadialGradient(tx, ty, 1, tx, ty, 26);
+  hg.addColorStop(0, 'rgba(190,255,170,0.75)'); hg.addColorStop(1, 'rgba(190,255,170,0)');
+  ctx.fillStyle = hg; ctx.fillRect(tx - 28, ty - 28, 56, 56);
+  ctx.save(); ctx.translate(tx, ty); ctx.rotate(S.heading + Math.PI / 2);
+  ctx.fillStyle = '#8fe07a';
+  ctx.beginPath(); ctx.ellipse(-5.5, -3, 6.5, 3.1, -0.5, 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(5.5, -3, 6.5, 3.1, 0.5, 0, 6.283); ctx.fill();
+  ctx.fillStyle = '#c9f79e';
+  ctx.beginPath(); ctx.arc(0, 0, 3.6, 0, 6.283); ctx.fill();
+  ctx.restore();
+  // shade vignette + winter snow
+  if (S.inShade && S.mode === 'play'){
+    const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.85);
+    v.addColorStop(0, 'rgba(8,14,10,0)'); v.addColorStop(1, 'rgba(8,14,10,0.42)');
+    ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  }
+  if (S.season > 0.78){
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    const dens = (S.season - 0.78) / 0.22;
+    for (let i = 0; i < 60 * dens; i++){
+      const fx = (i * 173.3 + S.time * 24 * (1 + (i % 5) * 0.2)) % W;
+      const fy = (i * 97.7 + S.time * (36 + (i % 7) * 9)) % H;
+      ctx.beginPath(); ctx.arc(fx, fy, 1.7, 0, 6.283); ctx.fill();
+    }
+  }
+}
+
+/* ---------------- HUD ---------------- */
+const seasonNames = ['Spring', 'Summer', 'Autumn', 'Winter'];
+function drawHUD(){
+  $('hval').textContent = Math.floor(S.height);
+  const f = $('sapfill');
+  f.style.width = S.sap.toFixed(1) + '%';
+  f.classList.toggle('low', S.sap < 30);
+  $('seasonfill').style.width = (S.season * 100).toFixed(1) + '%';
+  $('seasonlabel').textContent = seasonNames[Math.min(3, S.season * 4 | 0)] +
+    (S.mode === 'pause' ? ' · paused' : '');
+  const wa = $('windarrow');
+  wa.textContent = '➤';
+  wa.style.transform = `rotate(${S.wind >= 0 ? -32 : 212}deg) scale(${0.7 + Math.abs(S.wind)})`;
+  wa.style.opacity = 0.35 + Math.min(0.65, Math.abs(S.wind));
+  $('hint').style.opacity = S.time > 7 ? 0 : 1;
+}
+
+/* ---------------- main loop ---------------- */
+let lastT = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  let dt = Math.min(0.033, (now - lastT) / 1000); lastT = now;
+  if (S.mode === 'play'){
+    update(dt);
+    S.shake = Math.max(0, S.shake - 26 * dt);
+  } else if (S.mode === 'title'){
+    S.time += dt;
+    S.camY = 60 + Math.sin(S.time * 0.11) * 46;
+    for (const p of [...parts]) { p.t += dt; if (p.t > p.life) parts.splice(parts.indexOf(p), 1); }
+  }
+  ctx.save();
+  if (S.shake > 0.2) ctx.translate((Math.random() - 0.5) * S.shake, (Math.random() - 0.5) * S.shake);
+  drawWorld();
+  ctx.restore();
+  if (S.mode === 'play' || S.mode === 'pause') drawHUD();
+}
+reset();
+bestLine();
+requestAnimationFrame(frame);
+// screenshot/testing hooks: ?autostart=1 starts a run immediately
+if (new URLSearchParams(location.search).has('autostart')) startGame();
+</script>
+</body>
+</html>
