@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>TREETOP · from twig to treetop</title>
 <meta name="description" content="You are a sprout racing the seasons. Grow to the treetop before winter.">
+<meta property="og:title" content="TREETOP · from twig to treetop">
+<meta property="og:description" content="A tiny race against the seasons. Steer a growing sprout 120 m to the canopy: sunlight is food, shade is death, and winter is coming.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='54' r='38' fill='%232e5339'/%3E%3Cpath d='M50 82 L50 48 M50 48 C50 36 42 28 28 24 C42 20 52 30 53 42 C55 31 63 25 76 22 C66 32 60 40 57 50' stroke='%237ed492' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
   :root{
     --ink:#f3efe4; --ink-dim:#cfc9b8; --accent:#ffc95e; --leaf:#7ed492;
@@ -31,6 +35,7 @@
   #sapfill{height:100%;width:100%;border-radius:99px;background:linear-gradient(90deg,#58b368,#a7e08a);
            transition:width .18s linear}
   #sapfill.low{background:linear-gradient(90deg,#d96b4f,#ffc95e)}
+  #sapfill.surging{background:linear-gradient(90deg,#ff9a3d,#ffc46b)}
   #seasonwrap{flex:0 1 340px;text-align:center}
   #seasonbar{height:9px;border-radius:99px;background:rgba(243,239,228,.14);margin-top:6px;overflow:hidden}
   #seasonfill{height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,#ffd97a,#ff9d5c,#8fb7d9)}
@@ -83,6 +88,13 @@
   #bestline{font-size:13px;color:var(--accent);min-height:18px;margin-top:10px;font-weight:600}
   .hidden{display:none!important}
   @media (max-width:560px){ .howto{grid-template-columns:1fr} .stat .v{font-size:19px} #sapwrap{min-width:130px} }
+  @media (max-width:700px){
+    .hud-top{flex-wrap:wrap;padding:10px;gap:8px}
+    .stat{min-width:0;padding:6px 10px;flex:0 0 auto}
+    #seasonwrap{order:5;flex:1 1 100%}
+    #sapwrap{flex:1 1 110px;min-width:110px}
+    #combowrap{top:138px}
+  }
 </style>
 </head>
 <body>
@@ -99,7 +111,7 @@
     <div id="combowrap"><div id="combolabel">SUN CHAIN x2</div><div class="bar"><div id="combofill"></div></div></div>
   </div>
   <div id="toast"></div>
-  <div class="hud-bottom"><div id="hint">Steer with your <b>mouse</b> or <b>finger</b> · the branch grows toward it</div></div>
+  <div class="hud-bottom"><div id="hint">Steer with your <b>mouse</b> or <b>finger</b> · the branch grows toward it · hold to <b>surge</b></div></div>
 </div>
 
 <div class="screen on" id="title">
@@ -108,7 +120,7 @@
     <h1>TREE<span class="top">TOP</span></h1>
     <div class="tagline">from twig to treetop</div>
     <div class="howto">
-      <div><b>Grow.</b> Your branch never stops. Steer its tip with the mouse, touch, or arrow keys.</div>
+      <div><b>Grow.</b> Your branch never stops. Steer its tip with the mouse, touch, or arrow keys. <b>Hold</b> to surge: faster growth, faster drain.</div>
       <div><span class="dot" style="background:#ffd95e"></span><b>Sunlight</b> feeds your sap. No sap, no growth.</div>
       <div><span class="dot" style="background:#8fd0ff"></span><b>Rain</b> is a drink on the way up. Catch the drops.</div>
       <div><span class="dot" style="background:#3d4a42"></span><b>Shade</b> drains you, <b>wind</b> bends you, rival branches block you.</div>
@@ -160,7 +172,7 @@ window.addEventListener('resize', resize); resize();
 /* ---------------- constants ---------------- */
 const GOAL_Y   = 4200;          // px of world to the canopy  (= 120 m)
 const PX_PER_M = GOAL_Y / 120;
-const SEASON_S = 165;           // seconds from spring to winter
+const SEASON_S = 150;           // seconds from spring to winter
 const GROW_SPEED = 108;         // px/s
 const TURN_RATE  = 3.4;         // rad/s toward the pointer
 const SAP_MAX = 100, SAP_DRAIN = 5.0, SHADE_DRAIN = 12;
@@ -180,8 +192,16 @@ function stormAmt(y){
   return Math.min(clamp01((mm - 57) / 9), clamp01((103 - mm) / 9));
 }
 function crownAmt(y){ return clamp01(((y / PX_PER_M) % 120 - 88) / 10); }
+/* Storage can THROW in sandboxed iframes and privacy modes (some judges
+   open entries embedded). A dead script at boot is the worst possible
+   failure, so every access goes through this in-memory-backed helper. */
+const store = {
+  mem: {},
+  get(k){ try { return localStorage.getItem(k); } catch (e) { return k in this.mem ? this.mem[k] : null; } },
+  set(k, v){ this.mem[k] = v; try { localStorage.setItem(k, v); } catch (e) {} },
+};
 function loadStats(){
-  try { return JSON.parse(localStorage.getItem('treetop-stats')) || { plays: 0, wins: 0, suns: 0, bestScore: 0 }; }
+  try { return JSON.parse(store.get('treetop-stats')) || { plays: 0, wins: 0, suns: 0, bestScore: 0 }; }
   catch (e) { return { plays: 0, wins: 0, suns: 0, bestScore: 0 }; }
 }
 
@@ -245,6 +265,7 @@ function buildWorld(H){
       const t = s / 10;
       pts.push({ x: trunkX - side * t * t * 300, y: baseY + t * 300, r: 17 - t * 6 });
     }
+    pts[pts.length - 1].r = 22;   // the canopy blob is drawn at r=30; its collision reach (r + 8) now matches what you see
     world.rivals.push({ pts, side, baseY });
   }
 }
@@ -256,14 +277,14 @@ const S = {
   tip: { x: 0, y: 0 }, heading: -Math.PI / 2,
   path: [],                 // branch polyline {x,y}
   sap: SAP_MAX, height: 0, suns: 0, rains: 0, fruits: 0,
-  score: 0, combo: 0, comboT: 0, biome: 0, z: 1,
+  score: 0, combo: 0, comboT: 0, biome: 0, z: 1, surge: false, surgeToast: false,
   gust: { phase: 'idle', t: 5, dir: 1, strength: 0 },
   camY: 0, wind: 0, shake: 0, inShade: false,
   pointer: null,            // {x, y} screen coords while steering by pointer
   keys: {}, muted: false, won: false, dead: '', winPending: false,
   timeScale: 1, slowT: 0, winAt: 0,
   stats: loadStats(),
-  best: +(localStorage.getItem('treetop-best') || 0),
+  best: +(store.get('treetop-best') || 0),
 };
 function reset(){
   buildWorld(S.endless ? ENDLESS_Y : GOAL_Y);
@@ -271,7 +292,7 @@ function reset(){
   S.tip = { x: 0, y: 6 }; S.heading = -Math.PI / 2;
   S.path = [{ x: 0, y: 0 }, { x: 0, y: 6 }];
   S.height = 0; S.suns = 0; S.rains = 0; S.fruits = 0; S.camY = 0; S.shake = 0;
-  S.score = 0; S.combo = 0; S.comboT = 0; S.biome = 0; S.z = 1;
+  S.score = 0; S.combo = 0; S.comboT = 0; S.biome = 0; S.z = 1; S.surge = false; S.surgeToast = false;
   S.gust = { phase: 'idle', t: 4 + Math.random() * 3, dir: 1, strength: 0 };
   S.won = false; S.dead = ''; S.inShade = false; S.winPending = false;
   S.timeScale = 1; S.slowT = 0;
@@ -407,10 +428,24 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { keysDown[e.key.toLowerCase()] = false; });
 function setPointer(e){ S.pointer = { x: e.clientX, y: e.clientY }; }
-cvs.addEventListener('pointerdown', e => { setPointer(e); cvs.setPointerCapture(e.pointerId); });
-cvs.addEventListener('pointermove', e => { if (e.buttons || e.pointerType === 'touch') setPointer(e); else setPointer(e); });
-cvs.addEventListener('pointerup', () => { S.pointer = null; });
-cvs.addEventListener('pointercancel', () => { S.pointer = null; });
+const activePtrs = new Set();
+let mouseDown = false;
+cvs.addEventListener('pointerdown', e => {
+  activePtrs.add(e.pointerId);
+  if (e.pointerType === 'mouse') mouseDown = true;
+  setPointer(e); cvs.setPointerCapture(e.pointerId);
+});
+cvs.addEventListener('pointermove', e => { setPointer(e); });
+cvs.addEventListener('pointerup', e => {
+  activePtrs.delete(e.pointerId);
+  if (e.pointerType === 'mouse') mouseDown = false;
+  if (activePtrs.size === 0) S.pointer = null;
+});
+cvs.addEventListener('pointercancel', e => {
+  activePtrs.delete(e.pointerId);
+  if (e.pointerType === 'mouse') mouseDown = false;
+  if (activePtrs.size === 0) S.pointer = null;
+});
 document.getElementById('playbtn').addEventListener('click', () => startGame(false));
 document.getElementById('endlessbtn').addEventListener('click', () => startGame(true));
 document.getElementById('againbtn').addEventListener('click', () => startGame(S.endless));
@@ -430,14 +465,14 @@ function startGame(endless){
   musicStart();
 }
 function pauseGame(on){ S.mode = on ? 'pause' : 'play'; toast(on ? 'Paused' : 'Growing'); }
-function saveStats(){ try { localStorage.setItem('treetop-stats', JSON.stringify(S.stats)); } catch (e) {} }
+function saveStats(){ store.set('treetop-stats', JSON.stringify(S.stats)); }
 function gradeFor(score){ return score >= 1750 ? 'S' : score >= 1350 ? 'A' : score >= 950 ? 'B' : 'C'; }
 function endGame(won, why){
   S.mode = 'over'; S.won = won;
   const h = S.endless ? Math.floor(S.height) : Math.min(120, Math.floor(S.height));
   if (won && !S.endless) S.score += Math.round((1 - S.season) * 600);   // time bonus
   S.score = Math.round(S.score);
-  if (h > S.best) { S.best = h; localStorage.setItem('treetop-best', String(h)); }
+  if (h > S.best) { S.best = h; store.set('treetop-best', String(h)); }
   if (won) S.stats.wins++;
   S.stats.suns += S.suns;
   if (S.score > S.stats.bestScore) S.stats.bestScore = S.score;
@@ -560,8 +595,17 @@ function update(dt){
     if (nx * nx + ny * ny < 1) S.inShade = true;
   }
 
+  // surge: hold mouse / space / a second finger. Faster growth, faster
+  // drain. The speed lever the run was missing: sprint the storm, drift
+  // the floor.
+  S.surge = !!(keysDown[' '] || mouseDown || activePtrs.size >= 2);
+  const surging = S.surge && S.sap > 1;
+  if (surging && !S.surgeToast){ S.surgeToast = true; toast('Surge! Faster, thirstier'); }
+  if (surging && Math.random() < dt * 26)
+    parts.push({ kind: 'streak', x: S.tip.x + (Math.random() - 0.5) * 10, y: S.tip.y - 6, vx: 0, vy: -190, life: 0.4, t: 0, color: '#ffffff', r: 1.3 });
+
   // growth
-  const speed = GROW_SPEED * (S.inShade ? 0.55 : 1);
+  const speed = GROW_SPEED * (S.inShade ? 0.55 : 1) * (surging ? 1.45 : 1);
   // heading is a screen-space angle (-PI/2 = straight up); world y is up
   S.tip.x += Math.cos(S.heading) * speed * dt;
   S.tip.y += -Math.sin(S.heading) * speed * dt;
@@ -581,7 +625,7 @@ function update(dt){
 
   // sap (endless autumn deepens the drain each cycle)
   const drainScale = S.endless ? 1 + Math.min(0.55, S.cycle * 0.09) : 1;
-  S.sap -= (SAP_DRAIN * drainScale + (S.inShade ? SHADE_DRAIN : 0)) * dt;
+  S.sap -= (SAP_DRAIN * drainScale * (surging ? 2.1 : 1) + (S.inShade ? SHADE_DRAIN : 0)) * dt;
   if (S.sap <= 0 && !S.winPending){ S.sap = 0; endGame(false, 'sap'); return; }
 
   // rain drops fall inside their bands
@@ -916,7 +960,7 @@ function drawWorld(){
     ctx.globalAlpha = Math.max(0, a);
     if (p.kind === 'streak'){
       ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = p.r;
-      ctx.beginPath(); ctx.moveTo(sx(p.x), sy(p.y)); ctx.lineTo(sx(p.x - p.vx * 0.09), sy(p.y)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sx(p.x), sy(p.y)); ctx.lineTo(sx(p.x - p.vx * 0.09), sy(p.y - p.vy * 0.09)); ctx.stroke();
     } else if (p.kind === 'petal'){
       ctx.save(); ctx.translate(sx(p.x), sy(p.y)); ctx.rotate(p.rot);
       ctx.fillStyle = p.color;
@@ -938,11 +982,12 @@ function drawWorld(){
     ctx.fillText(f.text, sx(f.x), sy(f.y));
   }
   ctx.globalAlpha = 1;
-  // the growing tip: a bright sprout head
+  // the growing tip: a bright sprout head (halo swells while surging)
   const tx = sx(S.tip.x), ty = sy(S.tip.y);
-  const hg = ctx.createRadialGradient(tx, ty, 1, tx, ty, 26);
+  const hgR = S.surge ? 42 : 26;
+  const hg = ctx.createRadialGradient(tx, ty, 1, tx, ty, hgR);
   hg.addColorStop(0, 'rgba(190,255,170,0.75)'); hg.addColorStop(1, 'rgba(190,255,170,0)');
-  ctx.fillStyle = hg; ctx.fillRect(tx - 28, ty - 28, 56, 56);
+  ctx.fillStyle = hg; ctx.fillRect(tx - hgR - 2, ty - hgR - 2, (hgR + 2) * 2, (hgR + 2) * 2);
   ctx.save(); ctx.translate(tx, ty); ctx.rotate(S.heading + Math.PI / 2);
   ctx.fillStyle = '#8fe07a';
   ctx.beginPath(); ctx.ellipse(-5.5, -3, 6.5, 3.1, -0.5, 0, 6.283); ctx.fill();
@@ -976,6 +1021,7 @@ function drawHUD(){
   const f = $('sapfill');
   f.style.width = S.sap.toFixed(1) + '%';
   f.classList.toggle('low', S.sap < 30);
+  f.classList.toggle('surging', !!S.surge);
   $('seasonfill').style.width = (S.season * 100).toFixed(1) + '%';
   $('seasonlabel').textContent = S.endless
     ? BIOMES[S.biome].name.replace('The ', '') + ' · autumn ' + (S.cycle + 1)
