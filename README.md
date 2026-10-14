@@ -24,7 +24,10 @@ Four biomes, each with its own weather and temper:
 - **The Storm Band** (65-95 m): grey skies, visible rain, the strongest
   wind on the mountain.
 - **The Crown** (95-120 m): golden light and **sun fruit**, worth 45 sap
-  and 100 points each, always placed as a deliberate detour.
+  and 100 points each, always placed as a deliberate detour. **Frost
+  wisps** drift here: touching one chills the branch for two seconds,
+  growth and steering stiffened, in the stretch where the winter clock
+  bites hardest.
 
 Systems to master:
 
@@ -63,3 +66,25 @@ question is how high you get. Height and score carry the run.
 
 Built with AI assistance (allowed by the round rules) during the round
 window, 14-16 October 2026.
+
+## For the judges
+
+- **Trailer:** [`docs/trailer.mp4`](docs/trailer.mp4), 29 seconds of
+  real gameplay (title, climb, Crown, win card) with an original piano
+  loop. The in-game music is generative; the trailer score is a
+  stand-in in the same pentatonic family.
+- **Screenshots:** [`docs/floor.png`](docs/floor.png) ·
+  [`docs/storm.png`](docs/storm.png) · [`docs/crown.png`](docs/crown.png) ·
+  [`docs/win.png`](docs/win.png) · [`docs/portrait.png`](docs/portrait.png)
+  (phone layout) · share card [`docs/share.png`](docs/share.png).
+- **Balance, measured:** scripted playtest bots drive the real game
+  code. A passive centre-line run starves at ~50 m; an orb-seeking run
+  wins in ~65 s with ~35 s of season to spare; a casual run wins in
+  ~45 s. The economy was tuned against those bots, not by feel.
+- **Performance, measured:** the game's own JavaScript costs about
+  2 ms per frame; in a fully software-rendered browser (no GPU) it
+  holds 57-60 fps. Rendering uses prerendered tree sprites and width
+  batched branch paths, so ordinary hardware has ample headroom.
+- **Robustness:** every `localStorage` access sits behind a fallback,
+  so the game boots and plays even in sandboxed embeds and strict
+  privacy modes; tested with a storage layer that throws on every call.
