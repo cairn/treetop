@@ -36,6 +36,16 @@
   #seasonfill{height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,#ffd97a,#ff9d5c,#8fb7d9)}
   #windstat{text-align:right;min-width:104px}
   #windarrow{display:inline-block;font-size:20px;line-height:1}
+  #combowrap { position: absolute; top: 84px; left: 50%; transform: translateX(-50%); width: min(300px, 60vw);
+               opacity: 0; transition: opacity .25s; text-align: center; }
+  #combowrap.on { opacity: 1; }
+  #combolabel { font-size: 11px; font-weight: 800; letter-spacing: .22em; color: #ffd95e; text-shadow: 0 1px 8px rgba(0,0,0,.45); margin-bottom: 4px; }
+  #combowrap .bar { height: 5px; background: rgba(10,16,12,.4); border-radius: 3px; overflow: hidden; }
+  #combofill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #ffb84f, #ffe89a); transition: width .1s linear; }
+  .btn.ghost { background: linear-gradient(180deg, #33503a, #223526); color: #cfe8c9; box-shadow: 0 6px 18px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.14); margin-left: 8px; }
+  .btn.ghost:hover { filter: brightness(1.15); }
+  .tstats { margin-top: 10px; font-size: 12.5px; color: var(--ink-dim); letter-spacing: .04em; }
+  .stat .v.grade { color: #ffd95e; }
   .hud-bottom{position:absolute;left:0;right:0;bottom:12px;display:flex;justify-content:center}
   #hint{font-size:13px;color:var(--ink-dim);background:var(--panel);border:1px solid var(--panel-edge);
         padding:6px 14px;border-radius:99px;backdrop-filter:blur(6px)}
@@ -80,11 +90,13 @@
 
 <div id="hud">
   <div class="hud-top">
-    <div class="stat"><div class="k">Height</div><div class="v"><span id="hval">0</span><small> / 120 m</small></div></div>
+    <div class="stat"><div class="k">Height</div><div class="v"><span id="hval">0</span><small id="hgoal"> / 120 m</small></div></div>
+    <div class="stat"><div class="k">Score</div><div class="v" id="scoreval">0</div></div>
     <div class="stat" id="seasonwrap"><div class="k" id="seasonlabel">Spring</div>
       <div id="seasonbar"><div id="seasonfill"></div></div></div>
     <div class="stat" id="sapwrap"><div class="k">Sap</div><div id="sapbar"><div id="sapfill"></div></div></div>
     <div class="stat" id="windstat"><div class="k">Wind</div><div class="v"><span id="windarrow">→</span></div></div>
+    <div id="combowrap"><div id="combolabel">SUN CHAIN x2</div><div class="bar"><div id="combofill"></div></div></div>
   </div>
   <div id="toast"></div>
   <div class="hud-bottom"><div id="hint">Steer with your <b>mouse</b> or <b>finger</b> · the branch grows toward it</div></div>
@@ -102,7 +114,9 @@
       <div><span class="dot" style="background:#3d4a42"></span><b>Shade</b> drains you, <b>wind</b> bends you, rival branches block you.</div>
     </div>
     <button class="btn" id="playbtn">Start growing</button>
+    <button class="btn ghost" id="endlessbtn">Endless Autumn</button>
     <div id="bestline"></div>
+    <div class="tstats" id="title-stats"></div>
     <div class="keys"><b>P</b> pause &nbsp; <b>M</b> sound &nbsp; <b>R</b> restart</div>
   </div>
 </div>
@@ -117,6 +131,8 @@
       <div class="stat"><div class="k">Sunlight</div><div class="v" id="f-sun">0</div></div>
       <div class="stat"><div class="k">Rain</div><div class="v" id="f-rain">0</div></div>
       <div class="stat"><div class="k">Best</div><div class="v" id="f-best">0 m</div></div>
+      <div class="stat"><div class="k">Score</div><div class="v" id="f-score">0</div></div>
+      <div class="stat" id="gradewrap"><div class="k">Grade</div><div class="v grade" id="f-grade">·</div></div>
     </div>
     <button class="btn" id="againbtn">One more go</button>
     <div class="keys">or press <b>R</b></div>
@@ -147,8 +163,27 @@ const PX_PER_M = GOAL_Y / 120;
 const SEASON_S = 165;           // seconds from spring to winter
 const GROW_SPEED = 108;         // px/s
 const TURN_RATE  = 3.4;         // rad/s toward the pointer
-const SAP_MAX = 100, SAP_DRAIN = 4.4, SHADE_DRAIN = 12;
-const ORB_GAIN = 20, DROP_GAIN = 12;
+const SAP_MAX = 100, SAP_DRAIN = 5.0, SHADE_DRAIN = 12;
+const ORB_GAIN = 20, DROP_GAIN = 7, FRUIT_GAIN = 45;
+const COMBO_WINDOW = 3.5;
+const BIOMES = [
+  { name: 'The Forest Floor', until: 30 },
+  { name: 'The Trunk',        until: 65 },
+  { name: 'The Storm Band',   until: 95 },
+  { name: 'The Crown',        until: 1e9 },
+];
+const WIND_FACTOR = [0.7, 1.15, 1.5, 0.9];
+function biomeAt(y){ const m = y / PX_PER_M; return m < 30 ? 0 : m < 65 ? 1 : m < 95 ? 2 : 3; }
+function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+function stormAmt(y){
+  const mm = (y / PX_PER_M) % 120;               // storm band sits at 65-95 m of every 120
+  return Math.min(clamp01((mm - 57) / 9), clamp01((103 - mm) / 9));
+}
+function crownAmt(y){ return clamp01(((y / PX_PER_M) % 120 - 88) / 10); }
+function loadStats(){
+  try { return JSON.parse(localStorage.getItem('treetop-stats')) || { plays: 0, wins: 0, suns: 0, bestScore: 0 }; }
+  catch (e) { return { plays: 0, wins: 0, suns: 0, bestScore: 0 }; }
+}
 
 /* ---------------- seeded rng (the course is the same for everyone) ---------------- */
 function mulberry32(seed){
@@ -162,31 +197,48 @@ function mulberry32(seed){
 }
 
 /* ---------------- world ---------------- */
-const world = { orbs: [], drops: [], shades: [], rivals: [], leaves: [] };
-function buildWorld(){
+const world = { orbs: [], drops: [], shades: [], rivals: [], leaves: [], birds: [], fruits: [] };
+const ENDLESS_Y = 30000;
+function buildWorld(H){
   const rnd = mulberry32(20261014);
-  world.orbs.length = 0; world.drops.length = 0; world.shades.length = 0; world.rivals.length = 0;
+  world.orbs.length = 0; world.drops.length = 0; world.shades.length = 0;
+  world.rivals.length = 0; world.birds.length = 0; world.fruits.length = 0;
   // sunlight orbs: a loose trail all the way up. The first three sit near
   // the centre so a new player learns "sun is food" in the opening seconds.
-  for (let y = 210; y < GOAL_Y - 60; y += 105 + rnd() * 65){
+  for (let y = 210; y < H - 60; y += 105 + rnd() * 65){
     const learn = y < 800;
     world.orbs.push({ x: (rnd() * 2 - 1) * (learn ? 90 : 300), y, taken: false, ph: rnd() * 6.28 });
   }
-  // rain bands: drops fall and respawn inside three altitude bands
-  for (let i = 0; i < 30; i++){
-    const band = [[700, 1500], [1700, 2500], [2700, 3600]][i % 3];
-    world.drops.push({ x: (rnd() * 2 - 1) * 380, y: band[0] + rnd() * (band[1] - band[0]),
-                       vy: 130 + rnd() * 90, band, taken: false });
+  // sun fruit: rare, rich, and only in the high light
+  for (let y = 3350; y < H - 120; y += 1350 + rnd() * 300){
+    // always well off the centre line: the fruit is a detour, not a gift
+    world.fruits.push({ x: (rnd() < 0.5 ? -1 : 1) * (180 + rnd() * 140), y, taken: false, ph: rnd() * 6.28 });
+  }
+  // rain bands: drops fall and respawn inside three altitude bands.
+  // In endless the bands repeat every GOAL_Y so the low sky is not a desert.
+  const segments = Math.max(1, Math.round(H / GOAL_Y));
+  for (let seg = 0; seg < segments; seg++){
+    const base = seg * GOAL_Y;
+    const bands = [[base + 700, base + 1500], [base + 1700, base + 2500], [base + 2700, base + 3600]];
+    for (let i = 0; i < 30; i++){
+      const band = bands[i % 3];
+      world.drops.push({ x: (rnd() * 2 - 1) * 380, y: band[0] + rnd() * (band[1] - band[0]),
+                         vy: 130 + rnd() * 90, band, taken: false });
+    }
+  }
+  // birds perched along the way; they startle as you pass
+  for (let y = 950; y < H - 200; y += 620 + rnd() * 380){
+    if (rnd() < 0.55) world.birds.push({ x: (rnd() * 2 - 1) * 330, y, state: 'sit', vx: 0, vy: 0, ph: rnd() * 6.28 });
   }
   // shade clouds drifting sideways
-  for (let y = 520; y < GOAL_Y - 200; y += 330 + rnd() * 160){
+  for (let y = 520; y < H - 200; y += 330 + rnd() * 160){
     world.shades.push({ x: (rnd() * 2 - 1) * 260, y, rx: 125 + rnd() * 85, ry: 46 + rnd() * 22,
                          sp: (rnd() * 2 - 1) * 14, ph: rnd() * 6.28 });
   }
   // rival trees: a trunk line with a few branch arcs; collision = circles along them
-  for (let i = 0; i < 9; i++){
+  for (let i = 0, baseY = 420; baseY < H - 420; i++, baseY += 430){
     const side = i % 2 === 0 ? -1 : 1;
-    const baseY = 420 + i * 430 + rnd() * 120;
+    baseY += rnd() * 120;
     const trunkX = side * (300 + rnd() * 120);
     const pts = [];
     for (let s = 0; s <= 10; s++){
@@ -200,23 +252,30 @@ function buildWorld(){
 /* ---------------- game state ---------------- */
 const S = {
   mode: 'title',            // title | play | pause | over
-  time: 0, season: 0,       // season: 0..1 across SEASON_S
+  endless: false, time: 0, season: 0, cycle: 0,
   tip: { x: 0, y: 0 }, heading: -Math.PI / 2,
   path: [],                 // branch polyline {x,y}
-  sap: SAP_MAX, height: 0, suns: 0, rains: 0,
+  sap: SAP_MAX, height: 0, suns: 0, rains: 0, fruits: 0,
+  score: 0, combo: 0, comboT: 0, biome: 0, z: 1,
+  gust: { phase: 'idle', t: 5, dir: 1, strength: 0 },
   camY: 0, wind: 0, shake: 0, inShade: false,
   pointer: null,            // {x, y} screen coords while steering by pointer
-  keys: {}, muted: false, won: false, dead: '',
+  keys: {}, muted: false, won: false, dead: '', winPending: false,
+  timeScale: 1, slowT: 0, winAt: 0,
+  stats: loadStats(),
   best: +(localStorage.getItem('treetop-best') || 0),
 };
 function reset(){
-  buildWorld();
-  S.time = 0; S.season = 0; S.sap = SAP_MAX;
+  buildWorld(S.endless ? ENDLESS_Y : GOAL_Y);
+  S.time = 0; S.season = 0; S.cycle = 0; S.sap = SAP_MAX;
   S.tip = { x: 0, y: 6 }; S.heading = -Math.PI / 2;
   S.path = [{ x: 0, y: 0 }, { x: 0, y: 6 }];
-  S.height = 0; S.suns = 0; S.rains = 0; S.camY = 0; S.shake = 0;
-  S.won = false; S.dead = ''; S.inShade = false;
-  world.leaves.length = 0;
+  S.height = 0; S.suns = 0; S.rains = 0; S.fruits = 0; S.camY = 0; S.shake = 0;
+  S.score = 0; S.combo = 0; S.comboT = 0; S.biome = 0; S.z = 1;
+  S.gust = { phase: 'idle', t: 4 + Math.random() * 3, dir: 1, strength: 0 };
+  S.won = false; S.dead = ''; S.inShade = false; S.winPending = false;
+  S.timeScale = 1; S.slowT = 0;
+  world.leaves.length = 0; parts.length = 0; floaters.length = 0; ambLeaves.length = 0;
 }
 
 /* ---------------- sound (all synthesized, no files) ---------------- */
@@ -238,22 +297,112 @@ function tone(freq, dur, type, vol, slideTo){
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
 }
-const sndOrb  = () => { tone(880, 0.16, 'triangle', 0.20); setTimeout(() => tone(1318, 0.22, 'triangle', 0.16), 45); };
+const LADDER = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24];
+const sndOrb  = combo => { const st = LADDER[Math.min(LADDER.length - 1, Math.max(0, (combo || 1) - 1))];
+                           tone(740 * Math.pow(2, st / 12), 0.2, 'triangle', 0.20); };
 const sndDrop = () => tone(520, 0.18, 'sine', 0.22, 240);
 const sndBump = () => tone(140, 0.14, 'square', 0.10, 90);
-const sndWin  = () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, 0.34, 'triangle', 0.18), i * 110));
+const sndFruit = () => [660, 880, 1108].forEach((f, i) => setTimeout(() => tone(f, 0.24, 'triangle', 0.17), i * 60));
+const sndBiome = () => { tone(587, 0.3, 'sine', 0.14); setTimeout(() => tone(880, 0.42, 'sine', 0.12), 130); };
+const sndWin  = () => [523, 659, 784, 1046, 1318].forEach((f, i) => setTimeout(() => tone(f, 0.4, 'triangle', 0.17), i * 105));
 const sndLose = () => [392, 330, 262].forEach((f, i) => setTimeout(() => tone(f, 0.3, 'sine', 0.16), i * 140));
+
+/* ---- ambient noise beds (wind, rain) + generative music ---- */
+let noiseBuf = null, windGain = null, rainGain = null;
+function setupBeds(){
+  if (!AC || noiseBuf) return;
+  const len = AC.sampleRate;
+  noiseBuf = AC.createBuffer(1, len, AC.sampleRate);
+  const ch = noiseBuf.getChannelData(0);
+  for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+  const mk = (type, freq, q) => {
+    const src = AC.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const f = AC.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = AC.createGain(); g.gain.value = 0;
+    src.connect(f); f.connect(g); g.connect(master); src.start();
+    return g;
+  };
+  windGain = mk('bandpass', 480, 0.6);
+  rainGain = mk('highpass', 2400, 0.4);
+}
+function noiseBurst(dur, vol, f0, f1){
+  if (!AC || S.muted || !noiseBuf) return;
+  const t = AC.currentTime;
+  const src = AC.createBufferSource(); src.buffer = noiseBuf;
+  src.playbackRate.value = 0.7 + Math.random() * 0.4;
+  const f = AC.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.1;
+  f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  const g = AC.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.35);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f); f.connect(g); g.connect(master); src.start(t); src.stop(t + dur + 0.05);
+}
+const sndWhoosh = () => noiseBurst(0.26, 0.13, 500, 1600);
+const sndGustWarn = () => noiseBurst(1.0, 0.05, 300, 700);
+
+const MUS = { on: false, step: 0, nextT: 0, idx: 2, timer: null };
+const PENTA = [293.66, 329.63, 369.99, 440, 493.88, 587.33];
+const ROOTS = [146.83, 123.47, 98.0, 110.0];   // D, B, G, A
+function musNote(freq, t, dur, type, vol){
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+function musTick(){
+  if (!MUS.on || !AC) return;
+  const STEP = 0.29;                                // ~104 bpm eighths
+  while (MUS.nextT < AC.currentTime + 0.22){
+    const s = MUS.step, t = Math.max(MUS.nextT, AC.currentTime + 0.02);
+    const chord = (s >> 4) % 4, inChord = s % 16, biome = S.biome;
+    const playing = S.mode === 'play' || S.mode === 'over';
+    if (playing && !S.muted){
+      if (Math.random() < 0.74){
+        MUS.idx = Math.max(0, Math.min(PENTA.length - 1, MUS.idx + [-2, -1, -1, 0, 1, 1, 2][Math.random() * 7 | 0]));
+        musNote(PENTA[MUS.idx], t, 0.34, 'triangle', 0.055);
+      }
+      if (biome >= 1 && (inChord === 0 || inChord === 8)) musNote(ROOTS[chord], t, 0.8, 'sine', 0.11);
+      if (biome >= 2 && (inChord === 4 || inChord === 12)) musNote(ROOTS[chord] * 1.5, t, 0.5, 'sine', 0.045);
+      if (biome >= 3 && s % 2 === 0 && Math.random() < 0.4) musNote(PENTA[Math.random() * PENTA.length | 0] * 2, t, 0.3, 'sine', 0.03);
+    }
+    MUS.step++; MUS.nextT += STEP;
+  }
+}
+function musicStart(){
+  if (!AC) return;
+  setupBeds();
+  if (MUS.on) return;
+  MUS.on = true; MUS.step = 0; MUS.nextT = AC.currentTime + 0.1;
+  MUS.timer = setInterval(musTick, 90);
+}
+function audioUpdate(){
+  if (!AC) return;
+  const t = AC.currentTime;
+  if (master) master.gain.setTargetAtTime(S.muted ? 0 : 0.5, t, 0.1);
+  if (windGain){
+    const gustBoost = S.gust.phase === 'blow' ? 0.10 : S.gust.phase === 'warn' ? 0.04 : 0;
+    const target = S.mode === 'play' ? Math.min(0.20, Math.abs(S.wind) * 0.13) + gustBoost : 0;
+    windGain.gain.setTargetAtTime(target, t, 0.25);
+  }
+  if (rainGain){
+    const target = S.mode === 'play' ? stormAmt(S.camY) * 0.055 : 0;
+    rainGain.gain.setTargetAtTime(target, t, 0.4);
+  }
+}
 
 /* ---------------- input ---------------- */
 const keysDown = {};
 window.addEventListener('keydown', e => {
   keysDown[e.key.toLowerCase()] = true;
   if (e.key === ' ' || e.key.startsWith('Arrow')) e.preventDefault();
-  if (S.mode === 'title' && (e.key === ' ' || e.key === 'Enter')) startGame();
-  else if (S.mode === 'over' && (e.key.toLowerCase() === 'r' || e.key === ' ' || e.key === 'Enter')) startGame();
+  if (S.mode === 'title' && (e.key === ' ' || e.key === 'Enter')) startGame(false);
+  else if (S.mode === 'title' && e.key.toLowerCase() === 'e') startGame(true);
+  else if (S.mode === 'over' && (e.key.toLowerCase() === 'r' || e.key === ' ' || e.key === 'Enter')) startGame(S.endless);
   else if (S.mode === 'play' && e.key.toLowerCase() === 'p') pauseGame(true);
   else if (S.mode === 'pause' && (e.key.toLowerCase() === 'p' || e.key === 'Escape')) pauseGame(false);
-  else if (S.mode === 'play' && e.key.toLowerCase() === 'r') startGame();
+  else if (S.mode === 'play' && e.key.toLowerCase() === 'r') startGame(S.endless);
   if (e.key.toLowerCase() === 'm') { S.muted = !S.muted; toast(S.muted ? 'Sound off' : 'Sound on'); }
 });
 window.addEventListener('keyup', e => { keysDown[e.key.toLowerCase()] = false; });
@@ -262,57 +411,121 @@ cvs.addEventListener('pointerdown', e => { setPointer(e); cvs.setPointerCapture(
 cvs.addEventListener('pointermove', e => { if (e.buttons || e.pointerType === 'touch') setPointer(e); else setPointer(e); });
 cvs.addEventListener('pointerup', () => { S.pointer = null; });
 cvs.addEventListener('pointercancel', () => { S.pointer = null; });
-document.getElementById('playbtn').addEventListener('click', startGame);
-document.getElementById('againbtn').addEventListener('click', startGame);
+document.getElementById('playbtn').addEventListener('click', () => startGame(false));
+document.getElementById('endlessbtn').addEventListener('click', () => startGame(true));
+document.getElementById('againbtn').addEventListener('click', () => startGame(S.endless));
 
 /* ---------------- flow ---------------- */
 const $ = id => document.getElementById(id);
 function show(id, on){ $(id).classList.toggle('on', on); }
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show');
                      clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1500); }
-function startGame(){
+function startGame(endless){
   audio(); if (AC && AC.state === 'suspended') AC.resume();
+  S.endless = !!endless;
   reset(); S.mode = 'play';
+  S.stats.plays++; saveStats();
   show('title', false); show('over', false); $('hud').classList.add('on');
-  toast('Grow! Reach the light');
+  toast(S.endless ? 'Endless Autumn. Just keep growing' : 'Grow! Reach the light');
+  musicStart();
 }
 function pauseGame(on){ S.mode = on ? 'pause' : 'play'; toast(on ? 'Paused' : 'Growing'); }
+function saveStats(){ try { localStorage.setItem('treetop-stats', JSON.stringify(S.stats)); } catch (e) {} }
+function gradeFor(score){ return score >= 1750 ? 'S' : score >= 1350 ? 'A' : score >= 950 ? 'B' : 'C'; }
 function endGame(won, why){
   S.mode = 'over'; S.won = won;
-  const h = Math.floor(S.height);
+  const h = S.endless ? Math.floor(S.height) : Math.min(120, Math.floor(S.height));
+  if (won && !S.endless) S.score += Math.round((1 - S.season) * 600);   // time bonus
+  S.score = Math.round(S.score);
   if (h > S.best) { S.best = h; localStorage.setItem('treetop-best', String(h)); }
-  $('over-eyebrow').textContent = won ? 'You made it' : (why === 'sap' ? 'Out of sap' : 'Winter came');
+  if (won) S.stats.wins++;
+  S.stats.suns += S.suns;
+  if (S.score > S.stats.bestScore) S.stats.bestScore = S.score;
+  saveStats();
+  $('over-eyebrow').textContent = S.endless ? 'Endless Autumn' : (won ? 'You made it' : (why === 'sap' ? 'Out of sap' : 'Winter came'));
   $('over-title').textContent = won ? 'Treetop!' : (why === 'sap' ? 'The little sprout withered' : 'The frost got there first');
   $('over-line').textContent = won
     ? 'One small sprout, all the way to the light. Thanks for playing.'
     : (h > 100 ? 'So close to the light. One more go?' : 'The canopy is 120 m up. The sun orbs are the way.');
   $('f-height').textContent = h + ' m';
   $('f-sun').textContent = S.suns; $('f-rain').textContent = S.rains; $('f-best').textContent = S.best + ' m';
+  $('f-score').textContent = S.score.toLocaleString('en-CA');
+  $('f-grade').textContent = won && !S.endless ? gradeFor(S.score) : '·';
+  $('gradewrap').style.display = won && !S.endless ? '' : 'none';
   show('over', true);
-  if (won) sndWin(); else sndLose();
+  if (!won) sndLose();
+  bestLine();
 }
 function bestLine(){
   $('bestline').textContent = S.best > 0 ? 'Your best climb: ' + S.best + ' m' : '';
+  const st = S.stats;
+  $('title-stats').textContent = st.plays > 0
+    ? `${st.plays} climb${st.plays === 1 ? '' : 's'} · ${st.wins} treetop${st.wins === 1 ? '' : 's'} · ${st.suns} suns gathered · best score ${st.bestScore.toLocaleString('en-CA')}`
+    : '';
 }
 
 /* ---------------- particles ---------------- */
-const parts = [];
+const parts = [];       // sparks and petals {kind: 'dot'|'petal'}
+const floaters = [];    // rising score text {x, y, text, t, color}
+const ambLeaves = [];   // ambient falling leaves {x, y, vy, ph, rot}
 function burst(x, y, color, n, spd){
   for (let i = 0; i < n; i++){
     const a = Math.random() * 6.283, v = (0.3 + Math.random() * 0.7) * (spd || 90);
-    parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v + 30, life: 0.7 + Math.random() * 0.4, t: 0, color, r: 1.6 + Math.random() * 2.2 });
+    parts.push({ kind: 'dot', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v + 30, life: 0.7 + Math.random() * 0.4, t: 0, color, r: 1.6 + Math.random() * 2.2 });
   }
 }
+function petalBurst(x, y){
+  const colors = ['#ffd7e6', '#fff3f6', '#ffc2d4', '#ffe9a8'];
+  for (let i = 0; i < 70; i++){
+    const a = Math.random() * 6.283, v = 40 + Math.random() * 190;
+    parts.push({ kind: 'petal', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60,
+                 life: 2.2 + Math.random() * 1.6, t: 0, color: colors[i % 4],
+                 r: 3.4 + Math.random() * 3.6, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 5 });
+  }
+}
+function floater(x, y, text, color){ floaters.push({ x, y, text, color: color || '#ffe9a8', t: 0 }); }
 
 /* ---------------- update ---------------- */
 function windAt(y, t){
   const alt = Math.min(1, y / GOAL_Y);
-  return (Math.sin(t * 0.6) * 0.55 + Math.sin(t * 1.7 + 1.3) * 0.3) * (0.12 + alt * 0.75);
+  const base = (Math.sin(t * 0.6) * 0.55 + Math.sin(t * 1.7 + 1.3) * 0.3) * (0.12 + alt * 0.75);
+  return base * WIND_FACTOR[biomeAt(y)];
 }
 function update(dt){
   S.time += dt;
-  S.season = Math.min(1, S.time / SEASON_S);
+  if (S.endless){
+    const cyc = Math.floor(S.time / 100);
+    if (cyc > S.cycle){ S.cycle = cyc; toast('Autumn deepens'); sndBiome(); }
+    S.season = (S.time % 100) / 100;
+  } else {
+    S.season = Math.min(1, S.time / SEASON_S);
+  }
   S.wind = windAt(S.tip.y, S.time);
+  const prevHeight = S.height;
+
+  // biome crossings are moments: name them, chime, pay a little score
+  const b = biomeAt(S.tip.y);
+  if (b !== S.biome){
+    if (b > S.biome && S.tip.y > 60){ toast(BIOMES[b].name); sndBiome(); S.score += 25; }
+    S.biome = b;
+  }
+  // gusts: telegraphed, then they shove. Trunk and Storm Band (and anywhere
+  // in endless once you are off the floor).
+  const g = S.gust;
+  const gustZone = S.endless ? b >= 1 : (b === 1 || b === 2);
+  if (g.phase === 'idle'){
+    g.t -= dt;
+    if (g.t <= 0 && gustZone){ g.phase = 'warn'; g.t = 1.1; g.dir = Math.random() < 0.5 ? -1 : 1; sndGustWarn(); }
+  } else if (g.phase === 'warn'){
+    g.t -= dt;
+    if (Math.random() < dt * 22) parts.push({ kind: 'streak', x: S.tip.x - g.dir * 460, y: S.tip.y + (Math.random() - 0.5) * 260, vx: g.dir * 340, vy: 0, life: 0.8, t: 0, color: '#ffffff', r: 1.4 });
+    if (g.t <= 0){ g.phase = 'blow'; g.t = 1.5; g.strength = 0.85 + Math.random() * 0.5; }
+  } else if (g.phase === 'blow'){
+    g.t -= dt;
+    S.heading += g.dir * g.strength * dt;
+    if (Math.random() < dt * 30) parts.push({ kind: 'streak', x: S.tip.x - g.dir * 460, y: S.tip.y + (Math.random() - 0.5) * 300, vx: g.dir * 460, vy: 0, life: 0.7, t: 0, color: '#ffffff', r: 1.6 });
+    if (g.t <= 0){ g.phase = 'idle'; g.t = 6 + Math.random() * 5; }
+  }
 
   // steering: pointer wins, else keys, else drift straight with the wind
   let want = null;
@@ -335,6 +548,9 @@ function update(dt){
   S.heading += S.wind * dt * 0.9;                       // the wind bends the branch
   S.heading = Math.max(-Math.PI * 0.92, Math.min(-Math.PI * 0.08, S.heading)); // never grow into the ground
 
+  // combo timer
+  if (S.comboT > 0){ S.comboT -= dt; if (S.comboT <= 0) S.combo = 0; }
+
   // shade test
   S.inShade = false;
   for (const sh of world.shades){
@@ -355,62 +571,125 @@ function update(dt){
   if (Math.hypot(S.tip.x - last.x, S.tip.y - last.y) > 7){
     S.path.push({ x: S.tip.x, y: S.tip.y });
     if (Math.random() < 0.34) world.leaves.push({ x: S.tip.x, y: S.tip.y, a: S.heading + (Math.random() < 0.5 ? 0.9 : -0.9), s: 5 + Math.random() * 6, ph: Math.random() * 6.28 });
-    if (S.path.length > 900) S.path.splice(0, S.path.length - 900);
+    if (S.path.length > 1400) S.path.splice(0, S.path.length - 1400);
   }
   S.height = Math.max(S.height, S.tip.y / PX_PER_M);
+  if (S.height > prevHeight) S.score += (S.height - prevHeight) * 2;
+  // combo 3+ leaves a sparkle trail: flowing feels different
+  if (S.combo >= 3 && Math.random() < dt * 24)
+    parts.push({ kind: 'dot', x: S.tip.x + (Math.random() - 0.5) * 8, y: S.tip.y - 4, vx: (Math.random() - 0.5) * 22, vy: -26, life: 0.55, t: 0, color: '#ffe9a8', r: 1.7 });
 
-  // sap
-  S.sap -= (SAP_DRAIN + (S.inShade ? SHADE_DRAIN : 0)) * dt;
-  if (S.sap <= 0){ S.sap = 0; endGame(false, 'sap'); return; }
+  // sap (endless autumn deepens the drain each cycle)
+  const drainScale = S.endless ? 1 + Math.min(0.55, S.cycle * 0.09) : 1;
+  S.sap -= (SAP_DRAIN * drainScale + (S.inShade ? SHADE_DRAIN : 0)) * dt;
+  if (S.sap <= 0 && !S.winPending){ S.sap = 0; endGame(false, 'sap'); return; }
 
   // rain drops fall inside their bands
   for (const d of world.drops){
     d.y -= d.vy * dt;
     if (d.y < d.band[0]) { d.y = d.band[1]; d.x = (Math.random() * 2 - 1) * 380; }
   }
-  // pickups
+  // pickups: sunlight (combo ladder), sun fruit, rain
   for (const o of world.orbs){
     if (!o.taken && Math.abs(o.y - S.tip.y) < 30 && Math.abs(o.x - S.tip.x) < 30){
-      o.taken = true; S.suns++; S.sap = Math.min(SAP_MAX, S.sap + ORB_GAIN);
-      burst(o.x, o.y, '#ffd95e', 10, 110); sndOrb();
+      o.taken = true; S.suns++;
+      S.combo = S.comboT > 0 ? Math.min(10, S.combo + 1) : 1;
+      S.comboT = COMBO_WINDOW;
+      // combos multiply score and pitch, never food: a straight line up
+      // the middle must not be able to feed itself
+      S.sap = Math.min(SAP_MAX, S.sap + ORB_GAIN);
+      S.score += 25 + (S.combo - 1) * 10;
+      burst(o.x, o.y, '#ffd95e', 10 + S.combo, 110);
+      floater(o.x, o.y + 14, '+' + ORB_GAIN + (S.combo > 1 ? '  x' + S.combo : ''), '#ffe9a8');
+      sndOrb(S.combo);
+    }
+  }
+  for (const f of world.fruits){
+    if (!f.taken && Math.abs(f.y - S.tip.y) < 36 && Math.abs(f.x - S.tip.x) < 36){
+      f.taken = true; S.fruits++;
+      S.sap = Math.min(SAP_MAX, S.sap + FRUIT_GAIN);
+      S.score += 100;
+      burst(f.x, f.y, '#ffb84f', 22, 150);
+      floater(f.x, f.y + 16, 'SUN FRUIT +' + FRUIT_GAIN, '#ffc95e');
+      sndFruit();
     }
   }
   for (const d of world.drops){
-    if (Math.abs(d.y - S.tip.y) < 26 && Math.abs(d.x - S.tip.x) < 24){
+    if (Math.abs(d.y - S.tip.y) < 22 && Math.abs(d.x - S.tip.x) < 20){
       d.y = d.band[1]; d.x = (Math.random() * 2 - 1) * 380; S.rains++;
       S.sap = Math.min(SAP_MAX, S.sap + DROP_GAIN);
+      S.score += 10;
       burst(S.tip.x, S.tip.y, '#8fd0ff', 8, 80); sndDrop();
     }
   }
-  // rival branches: bump
+  // rival branches: bump, or a near miss worth style points
   for (const r of world.rivals){
+    if (Math.abs(r.baseY + 150 - S.tip.y) > 420) continue;
     for (const p of r.pts){
       const dd = Math.hypot(S.tip.x - p.x, S.tip.y - p.y);
       if (dd < p.r + 8){
         S.sap -= 26 * dt; S.shake = Math.min(7, S.shake + 22 * dt);
         S.heading += (S.tip.x < p.x ? -1 : 1) * 1.6 * dt;
+        if (S.combo > 0){ S.combo = 0; S.comboT = 0; }
         if (Math.random() < dt * 6) sndBump();
+      } else if (!p.near && dd < p.r + 30){
+        p.near = true; S.score += 5;
+        floater(S.tip.x, S.tip.y + 12, 'close! +5', '#cfc9b8');
+        sndWhoosh();
       }
     }
   }
-  // camera follows, gently
-  const targetCam = Math.max(0, S.tip.y - H * 0.38);
+  // birds startle as you pass
+  for (const bd of world.birds){
+    if (bd.state === 'sit'){
+      if (Math.abs(bd.y - S.tip.y) < 130 && Math.abs(bd.x - S.tip.x) < 130){
+        bd.state = 'fly'; bd.vx = (bd.x < S.tip.x ? -1 : 1) * (60 + Math.random() * 60); bd.vy = 120 + Math.random() * 60;
+        S.score += 15; floater(bd.x, bd.y + 14, 'startled! +15', '#ffe9a8');
+        burst(bd.x, bd.y, '#e8e2d2', 5, 60);
+      }
+    } else {
+      bd.x += bd.vx * dt; bd.y += bd.vy * dt; bd.vy += 26 * dt;
+    }
+  }
+  // ambient falling leaves, more as the season turns
+  if (Math.random() < dt * (2 + S.season * 7) && ambLeaves.length < 42)
+    ambLeaves.push({ x: (Math.random() * 2 - 1) * 460, y: S.camY + 780 + Math.random() * 200, vy: 26 + Math.random() * 30, ph: Math.random() * 6.28, rot: Math.random() * 6.28 });
+  for (let i = ambLeaves.length - 1; i >= 0; i--){
+    const lf = ambLeaves[i];
+    lf.y -= lf.vy * dt; lf.x += Math.sin(S.time * 1.4 + lf.ph) * 22 * dt + S.wind * 30 * dt; lf.rot += dt * 1.7;
+    if (lf.y < S.camY - 120) ambLeaves.splice(i, 1);
+  }
+  // camera: follows with a little lookahead in the growth direction, and
+  // the view breathes out (zoom) as you gain the high light
+  const targetCam = Math.max(0, S.tip.y - H * 0.38 - Math.sin(S.heading) * -46);
   S.camY += (targetCam - S.camY) * Math.min(1, dt * 3.2);
-  // particles
+  const zT = S.endless ? 0.94 : 1 - Math.min(1, S.tip.y / GOAL_Y) * 0.13;
+  S.z += (zT - S.z) * Math.min(1, dt * 1.4);
+  // particles and floaters
   for (let i = parts.length - 1; i >= 0; i--){
     const p = parts[i]; p.t += dt;
     if (p.t > p.life) { parts.splice(i, 1); continue; }
-    p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 130 * dt;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.kind === 'petal'){ p.vy -= 60 * dt; p.vx *= (1 - dt * 0.7); p.rot += p.vr * dt; if (p.vy < -34) p.vy = -34; }
+    else if (p.kind !== 'streak') p.vy += 130 * dt;
   }
-  // win / winter
-  if (S.tip.y >= GOAL_Y) endGame(true);
-  else if (S.season >= 1) endGame(false, 'winter');
+  for (let i = floaters.length - 1; i >= 0; i--){
+    const f = floaters[i]; f.t += dt; f.y += 34 * dt;
+    if (f.t > 1.15) floaters.splice(i, 1);
+  }
+  // endings
+  if (!S.endless && S.tip.y >= GOAL_Y && !S.winPending){
+    S.winPending = true; S.won = true; S.timeScale = 0.22; S.slowT = 1.5;
+    petalBurst(S.tip.x, S.tip.y); sndWin();
+  }
+  if (S.winPending){ /* endGame fires from frame() when the slow-mo ends */ }
+  else if (!S.endless && S.season >= 1) endGame(false, 'winter');
 }
 
 /* ---------------- view transform ---------------- */
 function xs(){ return Math.min(1, (W / 2 - 14) / 460); }       // horizontal squeeze on narrow screens
-function sx(x){ return W / 2 + x * xs(); }
-function sy(y){ return H * 0.68 - (y - S.camY); }
+function sx(x){ return W / 2 + x * xs() * S.z; }
+function sy(y){ return H * 0.68 - (y - S.camY) * S.z; }
 
 /* ---------------- render ---------------- */
 function lerp(a, b, t){ return a + (b - a) * t; }
@@ -421,9 +700,13 @@ function css(c, a){ return `rgba(${c[0]},${c[1]},${c[2]},${a === undefined ? 1 :
 
 function drawSky(){
   const s = S.season, alt = Math.min(1, S.camY / GOAL_Y);
-  const top = mixc(mixc([106, 156, 208], [64, 62, 110], s), [86, 140, 210], alt * 0.35);
-  const mid = mixc(mixc([178, 214, 188], [216, 132, 96], s), [170, 216, 190], alt * 0.3);
-  const low = mixc(mixc([232, 240, 208], [240, 178, 128], s), [255, 232, 168], alt * 0.45);
+  const storm = stormAmt(S.camY + 300), crown = crownAmt(S.camY + 300);
+  let top = mixc(mixc([106, 156, 208], [64, 62, 110], s), [86, 140, 210], alt * 0.35);
+  let mid = mixc(mixc([178, 214, 188], [216, 132, 96], s), [170, 216, 190], alt * 0.3);
+  let low = mixc(mixc([232, 240, 208], [240, 178, 128], s), [255, 232, 168], alt * 0.45);
+  // the Storm Band greys and darkens the world; the Crown gilds it
+  top = mixc(top, [74, 84, 96], storm * 0.55); mid = mixc(mid, [104, 116, 118], storm * 0.5); low = mixc(low, [150, 156, 150], storm * 0.4);
+  low = mixc(low, [255, 214, 130], crown * 0.35); mid = mixc(mid, [238, 206, 140], crown * 0.22);
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, css(top)); g.addColorStop(0.55, css(mid)); g.addColorStop(1, css(low));
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -487,7 +770,7 @@ function drawWorld(){
   drawParallax(0.3, 'rgba(46,84,54,0.5)', 1234, 52);
   drawParallax(0.55, 'rgba(30,60,38,0.75)', 777, 74);
   drawGround();
-  drawGoal();
+  if (!S.endless) drawGoal();
   // shade clouds: soft overlapping puffs, dark enough to read as shade
   // without turning into a solid pond
   for (const sh of world.shades){
@@ -519,6 +802,27 @@ function drawWorld(){
     ctx.beginPath(); ctx.arc(sx(top.x) - 24, sy(top.y) + 8, 20, 0, 6.283); ctx.fill();
     ctx.beginPath(); ctx.arc(sx(top.x) + 24, sy(top.y) + 8, 20, 0, 6.283); ctx.fill();
   }
+  // birds: perched silhouettes, or mid-flight once startled
+  for (const bd of world.birds){
+    const y = sy(bd.y); if (y < -40 || y > H + 40) continue;
+    const X = sx(bd.x);
+    ctx.fillStyle = '#2e3d4d';
+    if (bd.state === 'sit'){
+      ctx.beginPath(); ctx.ellipse(X, y, 7.5, 5, 0, 0, 6.283); ctx.fill();
+      ctx.beginPath(); ctx.arc(X + 6, y - 4.5, 3.4, 0, 6.283); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(X - 7, y - 1); ctx.lineTo(X - 13, y + 3); ctx.lineTo(X - 6, y + 2.6); ctx.fill();
+      ctx.strokeStyle = '#2e3d4d'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(X - 12, y + 8); ctx.quadraticCurveTo(X, y + 3, X + 12, y + 8); ctx.stroke();
+    } else {
+      const flap = Math.sin(S.time * 26 + bd.ph) * 0.7;
+      ctx.save(); ctx.translate(X, y); ctx.rotate(bd.vx > 0 ? 0.15 : Math.PI - 0.15);
+      ctx.beginPath(); ctx.ellipse(0, 0, 8, 4.6, 0, 0, 6.283); ctx.fill();
+      ctx.beginPath(); ctx.arc(7, -2, 3.2, 0, 6.283); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-2, -3, 9, 2.6, flap, 0, 6.283); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-2, -3, 9, 2.6, -flap * 0.7, 0, 6.283); ctx.fill();
+      ctx.restore();
+    }
+  }
   // sunlight orbs
   for (const o of world.orbs){
     if (o.taken) continue;
@@ -531,6 +835,21 @@ function drawWorld(){
     ctx.beginPath(); ctx.arc(X, y, 8.5 * pulse, 0, 6.283); ctx.fill();
     ctx.fillStyle = '#fff3c4';
     ctx.beginPath(); ctx.arc(X - 2.5, y - 2.5, 3.4, 0, 6.283); ctx.fill();
+  }
+  // sun fruit: the Crown's rich reward
+  for (const f of world.fruits){
+    if (f.taken) continue;
+    const y = sy(f.y); if (y < -50 || y > H + 50) continue;
+    const X = sx(f.x), pulse = 1 + Math.sin(S.time * 2.4 + f.ph) * 0.08;
+    const glow = ctx.createRadialGradient(X, y, 3, X, y, 44 * pulse);
+    glow.addColorStop(0, 'rgba(255,170,60,0.85)'); glow.addColorStop(1, 'rgba(255,170,60,0)');
+    ctx.fillStyle = glow; ctx.fillRect(X - 48, y - 48, 96, 96);
+    ctx.fillStyle = '#ffb84f';
+    ctx.beginPath(); ctx.arc(X, y, 13.5 * pulse, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#ffd97a';
+    ctx.beginPath(); ctx.arc(X - 4, y - 4.5, 5.6, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = '#7a9a3d'; ctx.lineWidth = 2.6;
+    ctx.beginPath(); ctx.moveTo(X, y - 12 * pulse); ctx.quadraticCurveTo(X + 3, y - 19 * pulse, X + 8, y - 19 * pulse); ctx.stroke();
   }
   // rain drops
   ctx.fillStyle = 'rgba(143,208,255,0.9)';
@@ -558,11 +877,65 @@ function drawWorld(){
     ctx.beginPath(); ctx.ellipse(lf.s * 0.7, 0, lf.s, lf.s * 0.45, 0, 0, 6.283); ctx.fill();
     ctx.restore();
   }
-  // particles
+  // ambient falling leaves
+  for (const lf of ambLeaves){
+    const y = sy(lf.y); if (y < -20 || y > H + 20) continue;
+    ctx.save(); ctx.translate(sx(lf.x), y); ctx.rotate(lf.rot);
+    ctx.fillStyle = ['#c96f35', '#d9a441', '#a8542f', '#7ed492'][(lf.ph * 10 | 0) % 4];
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.ellipse(0, 0, 5.2, 2.7, 0, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  // rain streaks in the Storm Band
+  const stormHere = stormAmt(S.camY + 300);
+  if (stormHere > 0.18){
+    ctx.strokeStyle = `rgba(190,220,245,${0.34 * stormHere})`; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let i = 0; i < 46 * stormHere; i++){
+      const rx = (i * 197.3 + S.time * 620 * (0.7 + (i % 4) * 0.13)) % (W + 60) - 30;
+      const ry = (i * 131.7 + S.time * 880 * (0.7 + (i % 5) * 0.11)) % (H + 40) - 20;
+      ctx.moveTo(rx, ry); ctx.lineTo(rx - 5, ry + 17);
+    }
+    ctx.stroke();
+  }
+  // fireflies as the light goes
+  if (S.season > 0.45){
+    const fa = Math.min(1, (S.season - 0.45) / 0.3) * 0.8;
+    for (let i = 0; i < 22; i++){
+      const fx = (Math.sin(i * 37.7) * 0.5 + 0.5) * W + Math.sin(S.time * 0.6 + i * 2.1) * 26;
+      const fy = (Math.cos(i * 23.3) * 0.5 + 0.5) * H + Math.cos(S.time * 0.43 + i * 1.7) * 20;
+      const tw = 0.5 + 0.5 * Math.sin(S.time * 2.2 + i * 1.93);
+      ctx.fillStyle = `rgba(255,240,150,${(fa * tw).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(fx, fy, 1.9, 0, 6.283); ctx.fill();
+    }
+  }
+  // particles: sparks, wind streaks, petals
   for (const p of parts){
     const a = 1 - p.t / p.life;
-    ctx.globalAlpha = a; ctx.fillStyle = p.color;
-    ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), p.r, 0, 6.283); ctx.fill();
+    ctx.globalAlpha = Math.max(0, a);
+    if (p.kind === 'streak'){
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = p.r;
+      ctx.beginPath(); ctx.moveTo(sx(p.x), sy(p.y)); ctx.lineTo(sx(p.x - p.vx * 0.09), sy(p.y)); ctx.stroke();
+    } else if (p.kind === 'petal'){
+      ctx.save(); ctx.translate(sx(p.x), sy(p.y)); ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * 0.55, 0, 0, 6.283); ctx.fill();
+      ctx.restore();
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), p.r, 0, 6.283); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+  // score floaters
+  ctx.textAlign = 'center';
+  for (const f of floaters){
+    const a = f.t < 0.15 ? f.t / 0.15 : 1 - Math.max(0, (f.t - 0.7) / 0.45);
+    ctx.globalAlpha = Math.max(0, Math.min(1, a));
+    ctx.font = '700 14px ui-rounded, system-ui, sans-serif';
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, sx(f.x), sy(f.y));
   }
   ctx.globalAlpha = 1;
   // the growing tip: a bright sprout head
@@ -597,17 +970,28 @@ function drawWorld(){
 /* ---------------- HUD ---------------- */
 const seasonNames = ['Spring', 'Summer', 'Autumn', 'Winter'];
 function drawHUD(){
-  $('hval').textContent = Math.floor(S.height);
+  $('hval').textContent = S.endless ? Math.floor(S.height) : Math.min(120, Math.floor(S.height));
+  $('hgoal').textContent = S.endless ? ' m · endless' : ' / 120 m';
+  $('scoreval').textContent = Math.floor(S.score).toLocaleString('en-CA');
   const f = $('sapfill');
   f.style.width = S.sap.toFixed(1) + '%';
   f.classList.toggle('low', S.sap < 30);
   $('seasonfill').style.width = (S.season * 100).toFixed(1) + '%';
-  $('seasonlabel').textContent = seasonNames[Math.min(3, S.season * 4 | 0)] +
-    (S.mode === 'pause' ? ' · paused' : '');
+  $('seasonlabel').textContent = S.endless
+    ? BIOMES[S.biome].name.replace('The ', '') + ' · autumn ' + (S.cycle + 1)
+    : seasonNames[Math.min(3, S.season * 4 | 0)] + (S.mode === 'pause' ? ' · paused' : '');
   const wa = $('windarrow');
   wa.textContent = '➤';
-  wa.style.transform = `rotate(${S.wind >= 0 ? -32 : 212}deg) scale(${0.7 + Math.abs(S.wind)})`;
-  wa.style.opacity = 0.35 + Math.min(0.65, Math.abs(S.wind));
+  const gusting = S.gust.phase !== 'idle';
+  wa.style.transform = `rotate(${S.wind >= 0 ? -32 : 212}deg) scale(${0.7 + Math.abs(S.wind) + (gusting ? 0.35 : 0)})`;
+  wa.style.opacity = 0.35 + Math.min(0.65, Math.abs(S.wind) + (gusting ? 0.3 : 0));
+  wa.style.color = S.gust.phase === 'warn' ? '#ffb35e' : S.gust.phase === 'blow' ? '#ff7a4f' : '';
+  const cw = $('combowrap');
+  if (S.combo >= 2){
+    cw.classList.add('on');
+    $('combofill').style.width = (S.comboT / COMBO_WINDOW * 100).toFixed(1) + '%';
+    $('combolabel').textContent = 'SUN CHAIN x' + S.combo;
+  } else cw.classList.remove('on');
   $('hint').style.opacity = S.time > 7 ? 0 : 1;
 }
 
@@ -615,14 +999,33 @@ function drawHUD(){
 let lastT = performance.now();
 function frame(now){
   requestAnimationFrame(frame);
-  let dt = Math.min(0.033, (now - lastT) / 1000); lastT = now;
+  const rawDt = Math.min(0.033, (now - lastT) / 1000); lastT = now;
+  audioUpdate();
   if (S.mode === 'play'){
-    update(dt);
-    S.shake = Math.max(0, S.shake - 26 * dt);
+    if (S.slowT > 0){
+      S.slowT -= rawDt;
+      if (S.slowT <= 0){
+        S.timeScale = 1;
+        if (S.winPending){ S.winPending = false; update(rawDt); endGame(true); }
+      }
+    }
+    if (S.mode === 'play'){
+      update(rawDt * S.timeScale);
+      S.shake = Math.max(0, S.shake - 26 * rawDt);
+    }
   } else if (S.mode === 'title'){
-    S.time += dt;
+    S.time += rawDt;
     S.camY = 60 + Math.sin(S.time * 0.11) * 46;
-    for (const p of [...parts]) { p.t += dt; if (p.t > p.life) parts.splice(parts.indexOf(p), 1); }
+    for (const p of [...parts]) { p.t += rawDt; if (p.t > p.life) parts.splice(parts.indexOf(p), 1); }
+  } else if (S.mode === 'over'){
+    // petals keep fluttering behind the results card
+    for (let i = parts.length - 1; i >= 0; i--){
+      const p = parts[i]; p.t += rawDt;
+      if (p.t > p.life) { parts.splice(i, 1); continue; }
+      p.x += p.vx * rawDt; p.y += p.vy * rawDt;
+      if (p.kind === 'petal'){ p.vy -= 60 * rawDt; p.vx *= (1 - rawDt * 0.7); p.rot += p.vr * rawDt; if (p.vy < -34) p.vy = -34; }
+    }
+    for (let i = floaters.length - 1; i >= 0; i--){ const f = floaters[i]; f.t += rawDt; if (f.t > 1.15) floaters.splice(i, 1); }
   }
   ctx.save();
   if (S.shake > 0.2) ctx.translate((Math.random() - 0.5) * S.shake, (Math.random() - 0.5) * S.shake);
@@ -634,7 +1037,11 @@ reset();
 bestLine();
 requestAnimationFrame(frame);
 // screenshot/testing hooks: ?autostart=1 starts a run immediately
-if (new URLSearchParams(location.search).has('autostart')) startGame();
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && S.mode === 'play' && !S.winPending) pauseGame(true);
+});
+document.addEventListener('contextmenu', e => { if (e.target === cvs) e.preventDefault(); });
+if (new URLSearchParams(location.search).has('autostart')) startGame(false);
 </script>
 </body>
 </html>
