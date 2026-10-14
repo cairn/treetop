@@ -221,12 +221,16 @@ function mulberry32(seed){
 }
 
 /* ---------------- world ---------------- */
-const world = { orbs: [], drops: [], shades: [], rivals: [], leaves: [], birds: [], fruits: [] };
+const world = { orbs: [], drops: [], shades: [], rivals: [], leaves: [], birds: [], fruits: [], wisps: [] };
 const ENDLESS_Y = 30000;
 function buildWorld(H){
   const rnd = mulberry32(20261014);
   world.orbs.length = 0; world.drops.length = 0; world.shades.length = 0;
-  world.rivals.length = 0; world.birds.length = 0; world.fruits.length = 0;
+  world.rivals.length = 0; world.birds.length = 0; world.fruits.length = 0; world.wisps.length = 0;
+  // frost wisps haunt the high light: winter's scouts, guarding the Crown
+  for (let y = 3180; y < H - 60; y += 240 + rnd() * 150){
+    world.wisps.push({ homeX: (rnd() * 2 - 1) * 330, homeY: y, ph: rnd() * 6.28, spentAt: -99 });
+  }
   // sunlight orbs: a loose trail all the way up. The first three sit near
   // the centre so a new player learns "sun is food" in the opening seconds.
   for (let y = 210; y < H - 60; y += 105 + rnd() * 65){
@@ -282,6 +286,7 @@ const S = {
   path: [],                 // branch polyline {x,y}
   sap: SAP_MAX, height: 0, suns: 0, rains: 0, fruits: 0,
   score: 0, combo: 0, comboT: 0, biome: 0, z: 1, surge: false, surgeToast: false,
+  chillT: 0, wispToast: false,
   gust: { phase: 'idle', t: 5, dir: 1, strength: 0 },
   camY: 0, wind: 0, shake: 0, inShade: false,
   pointer: null,            // {x, y} screen coords while steering by pointer
@@ -298,6 +303,7 @@ function reset(){
   S.path = [{ x: 0, y: 0 }, { x: 0, y: 6 }];
   S.height = 0; S.suns = 0; S.rains = 0; S.fruits = 0; S.camY = 0; S.shake = 0;
   S.score = 0; S.combo = 0; S.comboT = 0; S.biome = 0; S.z = 1; S.surge = false; S.surgeToast = false;
+  S.chillT = 0; S.wispToast = false;
   S.gust = { phase: 'idle', t: 4 + Math.random() * 3, dir: 1, strength: 0 };
   S.won = false; S.dead = ''; S.inShade = false; S.winPending = false;
   S.timeScale = 1; S.slowT = 0;
@@ -592,7 +598,7 @@ function update(dt){
     let d = want - S.heading;
     while (d > Math.PI) d -= 2 * Math.PI;
     while (d < -Math.PI) d += 2 * Math.PI;
-    const maxTurn = TURN_RATE * dt;
+    const maxTurn = TURN_RATE * (S.chillT > 0 ? 0.7 : 1) * dt;   // frost stiffens the branch
     S.heading += Math.max(-maxTurn, Math.min(maxTurn, d));
   }
   S.heading += S.wind * dt * 0.9;                       // the wind bends the branch
@@ -619,8 +625,27 @@ function update(dt){
   if (surging && Math.random() < dt * 26)
     parts.push({ kind: 'streak', x: S.tip.x + (Math.random() - 0.5) * 10, y: S.tip.y - 6, vx: 0, vy: -190, life: 0.4, t: 0, color: '#ffffff', r: 1.3 });
 
+  // frost wisps: drift on slow parametric paths, live only in the Crown's
+  // altitude band. Touch one and the branch chills: slow and stiff.
+  if (S.chillT > 0) S.chillT -= dt;
+  if (crownAmt(S.tip.y) > 0.05){
+    for (const w of world.wisps){
+      if (S.time - w.spentAt < 6) continue;
+      const wx = w.homeX + Math.sin(S.time * 0.31 + w.ph * 1.7) * 38;
+      const wy = w.homeY + Math.sin(S.time * 0.23 + w.ph) * 80;
+      if (Math.hypot(S.tip.x - wx, S.tip.y - wy) < 27){
+        w.spentAt = S.time;
+        S.chillT = 2.2; S.sap = Math.max(0, S.sap - 4);
+        burst(S.tip.x, S.tip.y, '#bfe2ff', 12, 90);
+        floater(S.tip.x, S.tip.y + 14, 'chilled!', '#bfe2ff');
+        noiseBurst(0.3, 0.05, 2400, 3300); tone(1560, 0.25, 'sine', 0.06, 1180);
+        if (!S.wispToast){ S.wispToast = true; toast('Frost wisps guard the Crown'); }
+      }
+    }
+  }
+
   // growth
-  const speed = GROW_SPEED * (S.inShade ? 0.55 : 1) * (surging ? 1.45 : 1);
+  const speed = GROW_SPEED * (S.inShade ? 0.55 : 1) * (surging ? 1.45 : 1) * (S.chillT > 0 ? 0.55 : 1);
   // heading is a screen-space angle (-PI/2 = straight up); world y is up
   S.tip.x += Math.cos(S.heading) * speed * dt;
   S.tip.y += -Math.sin(S.heading) * speed * dt;
@@ -856,8 +881,12 @@ function buildTreeSprites(){
   for (let i = 0; i < 6; i++) treeSprites.far.push(makeTreeSprite(4000 + i * 131, 54, css(farBase), farLight, 'rgba(54,46,36,0.8)'));
   for (let i = 0; i < 6; i++) treeSprites.near.push(makeTreeSprite(9000 + i * 173, 76, css(nearBase), nearLight, 'rgba(42,34,25,0.95)'));
 }
-function drawParallax(factor, sprites, seed, alpha){
-  const spacingY = 265, spacingX = 235;
+/* Parallax forest: tree sprites stamped per frame. (A baked-strip cache
+   was tried and measured no faster: profiling showed the frame cost in
+   this engine is rasterization, not draw calls, and the game's own JS
+   is ~2 ms per frame. Stamping is the simpler code, so it stays.) */
+function drawParallax(factor, sprites, seed, alpha, maxScale){
+  const spacingY = 265, spacingX = 245;
   const off = (S.camY * factor) % spacingY;
   const rowShift = Math.floor(S.camY * factor / spacingY);
   ctx.globalAlpha = alpha;
@@ -866,9 +895,9 @@ function drawParallax(factor, sprites, seed, alpha){
     const rowSeed = seed + (row + rowShift) * 101;
     for (let i = -1; i < W / spacingX + 2; i++){
       const rnd = mulberry32(rowSeed + i * 57);
-      if (rnd() < 0.18) continue;                       // gaps break the wallpaper grid
+      if (rnd() < 0.22) continue;                       // gaps break the wallpaper grid
       const sp = sprites[(rnd() * sprites.length) | 0];
-      const scale = 0.7 + rnd() * 0.75;
+      const scale = 0.65 + rnd() * (maxScale - 0.65);
       const x = i * spacingX + rnd() * 120 - 60 + Math.sin((row + rowShift) * 3.7 + i) * 14;
       const y = yBase + (rnd() - 0.5) * 60;
       ctx.drawImage(sp.c, x - sp.anchorX * scale, y - sp.anchorY * scale, sp.w * scale, sp.h * scale);
@@ -926,10 +955,10 @@ function drawGoal(){
 function drawWorld(){
   drawSky();
   buildTreeSprites();
-  drawParallax(0.3, treeSprites.far, 1234, 0.8);
+  drawParallax(0.3, treeSprites.far, 1234, 0.8, 1.15);
   // haze over the far forest pushes it back a valley
   ctx.fillStyle = css(skyMidCol, 0.20); ctx.fillRect(0, 0, W, H);
-  drawParallax(0.55, treeSprites.near, 777, 0.96);
+  drawParallax(0.55, treeSprites.near, 777, 0.96, 1.2);
   // weather washes sit over the forest, under the gameplay
   const stormW = stormAmt(S.camY + 300), crownW = crownAmt(S.camY + 300);
   if (stormW > 0.02){ ctx.fillStyle = `rgba(88,100,112,${(stormW * 0.16).toFixed(3)})`; ctx.fillRect(0, 0, W, H); }
@@ -1023,15 +1052,26 @@ function drawWorld(){
     const X = sx(d.x);
     ctx.beginPath(); ctx.ellipse(X, y, 3.4, 6.4, 0, 0, 6.283); ctx.fill();
   }
-  // the branch
+  // the branch: only the visible suffix is drawn, and its segments batch
+  // by width into a handful of Path2D strokes. Per segment stroke() calls
+  // measured 17 fps under a 4x CPU throttle; this does not.
   const n = S.path.length;
   if (n > 1){
-    for (let i = 1; i < n; i++){
+    let start = n - 1;
+    while (start > 0 && sy(S.path[start - 1].y) < H + 48) start--;
+    const barkP = [], tipP = [];
+    for (let b = 0; b < 6; b++){ barkP.push(new Path2D()); tipP.push(new Path2D()); }
+    for (let i = Math.max(1, start); i < n; i++){
       const p0 = S.path[i - 1], p1 = S.path[i], t = i / n;
-      ctx.strokeStyle = t > 0.92 ? '#5d8f3e' : '#6d4c2f';
-      ctx.lineWidth = lerp(8, 2.6, t);
-      ctx.beginPath(); ctx.moveTo(sx(p0.x), sy(p0.y)); ctx.lineTo(sx(p1.x), sy(p1.y)); ctx.stroke();
+      const wI = Math.max(0, Math.min(5, Math.round(lerp(8, 2.6, t)) - 3));
+      const arr = t > 0.92 ? tipP : barkP;
+      arr[wI].moveTo(sx(p0.x), sy(p0.y)); arr[wI].lineTo(sx(p1.x), sy(p1.y));
     }
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#6d4c2f';
+    for (let b = 0; b < 6; b++){ ctx.lineWidth = b + 3; ctx.stroke(barkP[b]); }
+    ctx.strokeStyle = '#5d8f3e';
+    for (let b = 0; b < 6; b++){ ctx.lineWidth = b + 3; ctx.stroke(tipP[b]); }
   }
   // leaves along the branch
   for (const lf of world.leaves){
@@ -1103,11 +1143,37 @@ function drawWorld(){
     ctx.fillText(f.text, sx(f.x), sy(f.y));
   }
   ctx.globalAlpha = 1;
-  // the growing tip: a bright sprout head (halo swells while surging)
+  // frost wisps, drawn just under the tip so they read as the Crown's guards
+  if (crownAmt(S.camY + 300) > 0.1){
+    for (const w of world.wisps){
+      if (S.time - w.spentAt < 6) continue;
+      const wx = w.homeX + Math.sin(S.time * 0.31 + w.ph * 1.7) * 38;
+      const wy = w.homeY + Math.sin(S.time * 0.23 + w.ph) * 80;
+      const X = sx(wx), Y = sy(wy);
+      if (Y < -50 || Y > H + 50) continue;
+      const near = Math.max(0, 1 - Math.hypot(S.tip.x - wx, S.tip.y - wy) / 190);
+      const pulse = 0.65 + 0.35 * Math.sin(S.time * 2.6 + w.ph);
+      const R = 15 + near * 9;
+      const wg = ctx.createRadialGradient(X, Y, 1, X, Y, R);
+      wg.addColorStop(0, `rgba(214,238,255,${(0.5 * pulse + near * 0.3).toFixed(3)})`);
+      wg.addColorStop(1, 'rgba(214,238,255,0)');
+      ctx.fillStyle = wg; ctx.fillRect(X - R, Y - R, R * 2, R * 2);
+      ctx.fillStyle = 'rgba(240,250,255,0.92)';
+      ctx.beginPath(); ctx.arc(X, Y, 3.1, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = `rgba(220,242,255,${(0.55 * pulse).toFixed(3)})`; ctx.lineWidth = 1.1;
+      const sa = S.time * 1.4 + w.ph;
+      ctx.beginPath();
+      ctx.moveTo(X + Math.cos(sa) * 6.4, Y + Math.sin(sa) * 6.4); ctx.lineTo(X - Math.cos(sa) * 6.4, Y - Math.sin(sa) * 6.4);
+      ctx.moveTo(X + Math.cos(sa + 1.57) * 6.4, Y + Math.sin(sa + 1.57) * 6.4); ctx.lineTo(X - Math.cos(sa + 1.57) * 6.4, Y - Math.sin(sa + 1.57) * 6.4);
+      ctx.stroke();
+    }
+  }
+  // the growing tip: a bright sprout head (halo swells while surging, freezes when chilled)
   const tx = sx(S.tip.x), ty = sy(S.tip.y);
   const hgR = S.surge ? 42 : 26;
   const hg = ctx.createRadialGradient(tx, ty, 1, tx, ty, hgR);
-  hg.addColorStop(0, 'rgba(190,255,170,0.75)'); hg.addColorStop(1, 'rgba(190,255,170,0)');
+  if (S.chillT > 0){ hg.addColorStop(0, 'rgba(170,220,255,0.85)'); hg.addColorStop(1, 'rgba(170,220,255,0)'); }
+  else { hg.addColorStop(0, 'rgba(190,255,170,0.75)'); hg.addColorStop(1, 'rgba(190,255,170,0)'); }
   ctx.fillStyle = hg; ctx.fillRect(tx - hgR - 2, ty - hgR - 2, (hgR + 2) * 2, (hgR + 2) * 2);
   ctx.save(); ctx.translate(tx, ty); ctx.rotate(S.heading + Math.PI / 2);
   ctx.fillStyle = '#8fe07a';
