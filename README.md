@@ -42,6 +42,9 @@ Systems to master:
   still starves.
 - **Style points.** Near misses on rival branches (+5), startled birds
   (+15), biome crossings (+25).
+- **The Ghost.** Your best-scoring run is kept, and the next run races
+  it: a small gold sprout on the same clock, with a faint dotted trail.
+  Beating yourself is the long game. Endless Autumn keeps its own ghost.
 - **Score and grades.** Height, pickups, chains, and a win time bonus
   add up to a grade: C, B, A, or S.
 
@@ -63,6 +66,15 @@ question is how high you get. Height and score carry the run.
 - Best height, lifetime stats, and best score persist in `localStorage`.
 - Pauses automatically when the tab loses focus. `P` pause, `M` mute,
   `R` restart, `E` from the title for Endless.
+- The results card has a **Share result** button (copies your score
+  line and the play link), and its advice line is cause-aware: starve
+  with few suns collected and it tells you to hunt orbs; die to winter
+  and it tells you where to surge.
+- `prefers-reduced-motion` is honoured: no screen shake, no slow
+  motion on the win.
+- The test harnesses in `tests/harness.js` drive the real game code
+  headlessly (balance bots, keyboard-only win, frost wisps, ghost,
+  and regression tests for the critic rounds): `node tests/harness.js`.
 
 Built with AI assistance (allowed by the round rules) during the round
 window, 14-16 October 2026.
