@@ -189,7 +189,13 @@ const BIOMES = [
   { name: 'The Crown',        until: 1e9 },
 ];
 const WIND_FACTOR = [0.7, 1.15, 1.5, 0.9];
-function biomeAt(y){ const m = y / PX_PER_M; return m < 30 ? 0 : m < 65 ? 1 : m < 95 ? 2 : 3; }
+function biomeAt(y){
+  // in Endless Autumn the bands cycle every 120 m, like the weather does;
+  // in the story climb altitude is absolute (the modulo would flip the
+  // biome back to Floor on the exact winning frame)
+  const m = S.endless ? (y / PX_PER_M) % 120 : y / PX_PER_M;
+  return m < 30 ? 0 : m < 65 ? 1 : m < 95 ? 2 : 3;
+}
 function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 function stormAmt(y){
   const mm = (y / PX_PER_M) % 120;               // storm band sits at 65-95 m of every 120
@@ -205,8 +211,15 @@ const store = {
   set(k, v){ this.mem[k] = v; try { localStorage.setItem(k, v); } catch (e) {} },
 };
 function loadStats(){
-  try { return JSON.parse(store.get('treetop-stats')) || { plays: 0, wins: 0, suns: 0, bestScore: 0 }; }
-  catch (e) { return { plays: 0, wins: 0, suns: 0, bestScore: 0 }; }
+  // schema-normalized: a legacy or damaged object (valid JSON, wrong
+  // shape) must never brick the title screen at boot
+  const d = { plays: 0, wins: 0, suns: 0, bestScore: 0 };
+  try {
+    const p = JSON.parse(store.get('treetop-stats'));
+    if (!p || typeof p !== 'object') return d;
+    for (const k in d) d[k] = Number.isFinite(+p[k]) && +p[k] >= 0 ? +p[k] : 0;
+    return d;
+  } catch (e) { return d; }
 }
 
 /* ---------------- seeded rng (the course is the same for everyone) ---------------- */
@@ -273,8 +286,8 @@ function buildWorld(H){
       const t = s / 10;
       pts.push({ x: trunkX - side * t * t * 300, y: baseY + t * 300, r: 17 - t * 6 });
     }
-    pts[pts.length - 1].r = 22;   // the canopy blob is drawn at r=30; its collision reach (r + 8) now matches what you see
-    world.rivals.push({ pts, side, baseY });
+    pts[pts.length - 1].r = 22;   // (legacy field; collision is segment based now, see update)
+    world.rivals.push({ pts, side, baseY, nearFlag: false });
   }
 }
 
@@ -293,8 +306,8 @@ const S = {
   keys: {}, muted: false, won: false, dead: '', winPending: false,
   timeScale: 1, slowT: 0, winAt: 0,
   stats: loadStats(),
-  best: +(store.get('treetop-best') || 0),
-  bestTime: +(store.get('treetop-besttime') || 0),
+  best: (() => { const v = parseInt(store.get('treetop-best'), 10); return Number.isFinite(v) && v > 0 ? v : 0; })(),
+  bestTime: (() => { const v = parseFloat(store.get('treetop-besttime')); return Number.isFinite(v) && v > 0 ? v : 0; })(),
 };
 function reset(){
   buildWorld(S.endless ? ENDLESS_Y : GOAL_Y);
@@ -441,22 +454,24 @@ window.addEventListener('keyup', e => { keysDown[e.key.toLowerCase()] = false; }
 window.addEventListener('blur', () => { for (const k in keysDown) keysDown[k] = false; });
 function setPointer(e){ S.pointer = { x: e.clientX, y: e.clientY }; }
 const activePtrs = new Set();
-let mouseDown = false;
+let mouseDown = false, mousePressAt = null;
 cvs.addEventListener('pointerdown', e => {
   activePtrs.add(e.pointerId);
-  if (e.pointerType === 'mouse') mouseDown = true;
+  if (e.pointerType === 'mouse'){ mouseDown = true; mousePressAt = { x: e.clientX, y: e.clientY }; }
   setPointer(e); cvs.setPointerCapture(e.pointerId);
 });
 cvs.addEventListener('pointermove', e => { setPointer(e); });
 cvs.addEventListener('pointerup', e => {
   activePtrs.delete(e.pointerId);
-  if (e.pointerType === 'mouse') mouseDown = false;
-  if (activePtrs.size === 0) S.pointer = null;
+  if (e.pointerType === 'mouse'){ mouseDown = false; mousePressAt = null; }
+  // releasing the mouse must not drop the aim: hover keeps steering.
+  // Touch aims only while a finger is down, so it clears with the last one.
+  else if (activePtrs.size === 0) S.pointer = null;
 });
 cvs.addEventListener('pointercancel', e => {
   activePtrs.delete(e.pointerId);
-  if (e.pointerType === 'mouse') mouseDown = false;
-  if (activePtrs.size === 0) S.pointer = null;
+  if (e.pointerType === 'mouse'){ mouseDown = false; mousePressAt = null; }
+  else if (activePtrs.size === 0) S.pointer = null;
 });
 document.getElementById('playbtn').addEventListener('click', () => startGame(false));
 document.getElementById('endlessbtn').addEventListener('click', () => startGame(true));
@@ -587,7 +602,10 @@ function update(dt){
   let want = null;
   if (S.pointer){
     const dx = S.pointer.x - sx(S.tip.x), dy = S.pointer.y - sy(S.tip.y);
-    if (Math.hypot(dx, dy) > 14) want = Math.atan2(dy, dx);
+    // sx() squeezes world x by xs() on narrow screens but sy() does not
+    // squeeze y, so the raw screen angle is NOT the world angle: undo
+    // the squeeze on dx or portrait steering aims steeper than the finger
+    if (Math.hypot(dx, dy) > 14) want = Math.atan2(dy, dx / xs());
   }
   if (want === null){
     if (keysDown['arrowleft'] || keysDown['a']) want = S.heading - 1.2;
@@ -619,7 +637,12 @@ function update(dt){
   // surge: hold mouse / space / a second finger. Faster growth, faster
   // drain. The speed lever the run was missing: sprint the storm, drift
   // the floor.
-  S.surge = !!(keysDown[' '] || mouseDown || activePtrs.size >= 2);
+  // surge inputs: SPACE, a second finger, or a mouse press HELD STILL.
+  // A press that drags is steering, not surging: click-drag players were
+  // silently paying the 2.1x drain for the whole drag.
+  const mouseSurge = mouseDown && mousePressAt && S.pointer
+    && Math.hypot(S.pointer.x - mousePressAt.x, S.pointer.y - mousePressAt.y) < 24;
+  S.surge = !!(keysDown[' '] || mouseSurge || activePtrs.size >= 2);
   const surging = S.surge && S.sap > 1;
   if (surging && !S.surgeToast){ S.surgeToast = true; toast('Surge! Faster, thirstier'); }
   if (surging && Math.random() < dt * 26)
@@ -663,10 +686,12 @@ function update(dt){
   if (S.combo >= 3 && Math.random() < dt * 24)
     parts.push({ kind: 'dot', x: S.tip.x + (Math.random() - 0.5) * 8, y: S.tip.y - 4, vx: (Math.random() - 0.5) * 22, vy: -26, life: 0.55, t: 0, color: '#ffe9a8', r: 1.7 });
 
-  // sap (endless autumn deepens the drain each cycle)
+  // sap (endless autumn deepens the drain each cycle). Death is NOT
+  // judged here: pickups and the goal resolve first, below, so entering
+  // an orb on the frame the bar empties still saves you.
   const drainScale = S.endless ? 1 + Math.min(0.55, S.cycle * 0.09) : 1;
   S.sap -= (SAP_DRAIN * drainScale * (surging ? 2.1 : 1) + (S.inShade ? SHADE_DRAIN : 0)) * dt;
-  if (S.sap <= 0 && !S.winPending){ S.sap = 0; endGame(false, 'sap'); return; }
+  if (S.sap < 0) S.sap = 0;
 
   // rain drops fall inside their bands
   for (const d of world.drops){
@@ -706,21 +731,33 @@ function update(dt){
       burst(S.tip.x, S.tip.y, '#8fd0ff', 8, 80); sndDrop();
     }
   }
-  // rival branches: bump, or a near miss worth style points
+  // rival branches: bump, or a near miss worth style points. Collision
+  // is distance to the trunk SEGMENTS (the bark is drawn 15 px wide, so
+  // reach 14 from the centre line is honest), plus the canopy disc.
+  // The old per-point circles reached 19-25 px: sap drained before the
+  // sprout ever touched wood.
   for (const r of world.rivals){
     if (Math.abs(r.baseY + 150 - S.tip.y) > 420) continue;
-    for (const p of r.pts){
-      const dd = Math.hypot(S.tip.x - p.x, S.tip.y - p.y);
-      if (dd < p.r + 8){
-        S.sap -= 26 * dt; S.shake = Math.min(7, S.shake + 22 * dt);
-        S.heading += (S.tip.x < p.x ? -1 : 1) * 1.6 * dt;
-        if (S.combo > 0){ S.combo = 0; S.comboT = 0; }
-        if (Math.random() < dt * 6) sndBump();
-      } else if (!p.near && dd < p.r + 30){
-        p.near = true; S.score += 5;
-        floater(S.tip.x, S.tip.y + 12, 'close! +5', '#cfc9b8');
-        sndWhoosh();
-      }
+    let minD = 1e9, nearX = r.pts[0].x;
+    for (let i = 1; i < r.pts.length; i++){
+      const a = r.pts[i - 1], b = r.pts[i];
+      const abx = b.x - a.x, aby = b.y - a.y;
+      const tt = Math.max(0, Math.min(1, ((S.tip.x - a.x) * abx + (S.tip.y - a.y) * aby) / ((abx * abx + aby * aby) || 1)));
+      const px = a.x + abx * tt, py = a.y + aby * tt;
+      const d = Math.hypot(S.tip.x - px, S.tip.y - py);
+      if (d < minD){ minD = d; nearX = px; }
+    }
+    const top = r.pts[r.pts.length - 1];
+    const canopyD = Math.hypot(S.tip.x - top.x, S.tip.y - top.y);
+    if (canopyD < 36 || minD < 14){
+      S.sap -= 26 * dt; S.shake = Math.min(7, S.shake + 22 * dt);
+      S.heading += (S.tip.x < nearX ? -1 : 1) * 1.6 * dt;
+      if (S.combo > 0){ S.combo = 0; S.comboT = 0; }
+      if (Math.random() < dt * 6) sndBump();
+    } else if (!r.nearFlag && (minD < 44 || canopyD < 66)){
+      r.nearFlag = true; S.score += 5;
+      floater(S.tip.x, S.tip.y + 12, 'close! +5', '#cfc9b8');
+      sndWhoosh();
     }
   }
   // birds startle as you pass
@@ -761,12 +798,15 @@ function update(dt){
     const f = floaters[i]; f.t += dt; f.y += 34 * dt;
     if (f.t > 1.15) floaters.splice(i, 1);
   }
-  // endings
+  // endings, judged in the player's favour on ties: the goal first
+  // (crossing the line on the frame the bar empties is a photo-finish
+  // win), then sap, then the season
   if (!S.endless && S.tip.y >= GOAL_Y && !S.winPending){
     S.winPending = true; S.won = true; S.timeScale = 0.22; S.slowT = 1.5;
     petalBurst(S.tip.x, S.tip.y); sndWin();
   }
   if (S.winPending){ /* endGame fires from frame() when the slow-mo ends */ }
+  else if (S.sap <= 0) endGame(false, 'sap');
   else if (!S.endless && S.season >= 1) endGame(false, 'winter');
 }
 
@@ -1216,7 +1256,11 @@ function drawHUD(){
   const wa = $('windarrow');
   wa.textContent = '➤';
   const gusting = S.gust.phase !== 'idle';
-  wa.style.transform = `rotate(${S.wind >= 0 ? -32 : 212}deg) scale(${0.7 + Math.abs(S.wind) + (gusting ? 0.35 : 0)})`;
+  // during a gust the arrow shows the GUST's direction (a horizontal
+  // shove), not the ambient wind's: countering the wrong way is worse
+  // than no telegraph at all
+  const arrowDeg = gusting ? (S.gust.dir > 0 ? 0 : 180) : (S.wind >= 0 ? -32 : 212);
+  wa.style.transform = `rotate(${arrowDeg}deg) scale(${0.7 + Math.abs(S.wind) + (gusting ? 0.35 : 0)})`;
   wa.style.opacity = 0.35 + Math.min(0.65, Math.abs(S.wind) + (gusting ? 0.3 : 0));
   wa.style.color = S.gust.phase === 'warn' ? '#ffb35e' : S.gust.phase === 'blow' ? '#ff7a4f' : '';
   const pips = 1 + Math.min(2, Math.floor(Math.abs(S.wind) * 2.4) + (S.gust.phase === 'blow' ? 1 : 0));
@@ -1241,7 +1285,9 @@ function frame(now){
       S.slowT -= rawDt;
       if (S.slowT <= 0){
         S.timeScale = 1;
-        if (S.winPending){ S.winPending = false; update(rawDt); endGame(true); }
+        // update BEFORE clearing winPending, so the win's death guards
+        // still apply during this final frame; then end exactly once
+        if (S.winPending){ update(rawDt); S.winPending = false; if (S.mode === 'play') endGame(true); }
       }
     }
     if (S.mode === 'play'){
