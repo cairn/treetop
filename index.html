@@ -142,13 +142,13 @@ function resize(){
 window.addEventListener('resize', resize); resize();
 
 /* ---------------- constants ---------------- */
-const GOAL_Y   = 3000;          // px of world to the canopy  (= 120 m)
+const GOAL_Y   = 4200;          // px of world to the canopy  (= 120 m)
 const PX_PER_M = GOAL_Y / 120;
-const SEASON_S = 150;           // seconds from spring to winter
+const SEASON_S = 165;           // seconds from spring to winter
 const GROW_SPEED = 108;         // px/s
 const TURN_RATE  = 3.4;         // rad/s toward the pointer
-const SAP_MAX = 100, SAP_DRAIN = 5.2, SHADE_DRAIN = 17;
-const ORB_GAIN = 17, DROP_GAIN = 10;
+const SAP_MAX = 100, SAP_DRAIN = 4.4, SHADE_DRAIN = 12;
+const ORB_GAIN = 20, DROP_GAIN = 12;
 
 /* ---------------- seeded rng (the course is the same for everyone) ---------------- */
 function mulberry32(seed){
@@ -166,25 +166,27 @@ const world = { orbs: [], drops: [], shades: [], rivals: [], leaves: [] };
 function buildWorld(){
   const rnd = mulberry32(20261014);
   world.orbs.length = 0; world.drops.length = 0; world.shades.length = 0; world.rivals.length = 0;
-  // sunlight orbs: a loose trail all the way up
-  for (let y = 210; y < GOAL_Y - 60; y += 120 + rnd() * 90){
-    world.orbs.push({ x: (rnd() * 2 - 1) * 340, y, taken: false, ph: rnd() * 6.28 });
+  // sunlight orbs: a loose trail all the way up. The first three sit near
+  // the centre so a new player learns "sun is food" in the opening seconds.
+  for (let y = 210; y < GOAL_Y - 60; y += 105 + rnd() * 65){
+    const learn = y < 800;
+    world.orbs.push({ x: (rnd() * 2 - 1) * (learn ? 90 : 300), y, taken: false, ph: rnd() * 6.28 });
   }
-  // rain bands: drops fall and respawn inside two altitude bands
-  for (let i = 0; i < 26; i++){
-    const band = i % 2 === 0 ? [700, 1500] : [1700, 2500];
+  // rain bands: drops fall and respawn inside three altitude bands
+  for (let i = 0; i < 30; i++){
+    const band = [[700, 1500], [1700, 2500], [2700, 3600]][i % 3];
     world.drops.push({ x: (rnd() * 2 - 1) * 380, y: band[0] + rnd() * (band[1] - band[0]),
                        vy: 130 + rnd() * 90, band, taken: false });
   }
   // shade clouds drifting sideways
   for (let y = 520; y < GOAL_Y - 200; y += 330 + rnd() * 160){
-    world.shades.push({ x: (rnd() * 2 - 1) * 260, y, rx: 150 + rnd() * 130, ry: 52 + rnd() * 26,
+    world.shades.push({ x: (rnd() * 2 - 1) * 260, y, rx: 125 + rnd() * 85, ry: 46 + rnd() * 22,
                          sp: (rnd() * 2 - 1) * 14, ph: rnd() * 6.28 });
   }
   // rival trees: a trunk line with a few branch arcs; collision = circles along them
-  for (let i = 0; i < 7; i++){
+  for (let i = 0; i < 9; i++){
     const side = i % 2 === 0 ? -1 : 1;
-    const baseY = 420 + i * 390 + rnd() * 120;
+    const baseY = 420 + i * 430 + rnd() * 120;
     const trunkX = side * (300 + rnd() * 120);
     const pts = [];
     for (let s = 0; s <= 10; s++){
@@ -343,7 +345,7 @@ function update(dt){
   }
 
   // growth
-  const speed = GROW_SPEED * (S.inShade ? 0.45 : 1);
+  const speed = GROW_SPEED * (S.inShade ? 0.55 : 1);
   // heading is a screen-space angle (-PI/2 = straight up); world y is up
   S.tip.x += Math.cos(S.heading) * speed * dt;
   S.tip.y += -Math.sin(S.heading) * speed * dt;
@@ -486,11 +488,14 @@ function drawWorld(){
   drawParallax(0.55, 'rgba(30,60,38,0.75)', 777, 74);
   drawGround();
   drawGoal();
-  // shade clouds
+  // shade clouds: soft overlapping puffs, dark enough to read as shade
+  // without turning into a solid pond
   for (const sh of world.shades){
     const y = sy(sh.y); if (y < -140 || y > H + 140) continue;
-    ctx.fillStyle = 'rgba(24,34,30,0.5)';
-    for (const [ox, oy, r] of [[0, 0, 1], [-0.5, 0.16, 0.72], [0.5, 0.14, 0.76], [0.1, -0.2, 0.66]]){
+    const puffs = [[0, 0, 1, 0.30], [-0.52, 0.18, 0.74, 0.26], [0.52, 0.16, 0.78, 0.26],
+                   [0.12, -0.22, 0.68, 0.22], [-0.2, -0.3, 0.5, 0.18], [0.34, 0.3, 0.55, 0.2]];
+    for (const [ox, oy, r, a] of puffs){
+      ctx.fillStyle = `rgba(22,32,28,${a})`;
       ctx.beginPath();
       ctx.ellipse(sx(sh.x) + ox * sh.rx * xs(), y + oy * sh.ry, sh.rx * xs() * r, sh.ry * r, 0, 0, 6.283);
       ctx.fill();
@@ -510,7 +515,9 @@ function drawWorld(){
     ctx.stroke();
     const top = r.pts[r.pts.length - 1];
     ctx.fillStyle = '#33512e';
-    ctx.beginPath(); ctx.arc(sx(top.x), sy(top.y) - 12, 30, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx(top.x), sy(top.y), 30, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx(top.x) - 24, sy(top.y) + 8, 20, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx(top.x) + 24, sy(top.y) + 8, 20, 0, 6.283); ctx.fill();
   }
   // sunlight orbs
   for (const o of world.orbs){
