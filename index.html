@@ -776,28 +776,127 @@ function drawSky(){
   ctx.fillStyle = glow; ctx.fillRect(sunX - 140, sunY - 140, 280, 280);
   ctx.fillStyle = s > 0.8 ? '#ffb37a' : '#ffe89a';
   ctx.beginPath(); ctx.arc(sunX, sunY, 21, 0, 6.283); ctx.fill();
+  skyMidCol = mid;
+  // slow cloud wisps: huge, soft, barely there
+  for (let i = 0; i < 3; i++){
+    const wx = (((i * 0.41 + S.time * 0.0035 * (1 + i * 0.4)) % 1.35) - 0.17) * W;
+    const wy = H * (0.13 + i * 0.15) - (S.camY * 0.05) % (H * 0.4);
+    const wg = ctx.createRadialGradient(wx, wy, 8, wx, wy, 190 + i * 60);
+    wg.addColorStop(0, 'rgba(255,255,255,0.10)'); wg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = wg;
+    ctx.save(); ctx.translate(wx, wy); ctx.scale(1, 0.36); ctx.translate(-wx, -wy);
+    ctx.fillRect(wx - 260 - i * 80, wy - 260 - i * 80, (260 + i * 80) * 2, (260 + i * 80) * 2);
+    ctx.restore();
+  }
 }
-function drawParallax(factor, color, seed, baseR){
-  const spacing = 230, off = (S.camY * factor) % spacing;
-  ctx.fillStyle = color;
-  for (let layer = -1; layer < H / spacing + 2; layer++){
-    const yBase = layer * spacing + off;
-    for (let i = 0; i < 4; i++){
-      const rnd = mulberry32(seed + layer * 31 + i * 7)();
-      const x = (i + rnd * 0.7) * (W / 3.4) - 60, r = baseR * (0.75 + rnd * 0.6);
-      ctx.fillRect(x - 4, yBase - r * 0.4, 8, r * 1.6);
-      ctx.beginPath();
-      ctx.arc(x, yBase - r * 0.7, r, 0, 6.283);
-      ctx.arc(x - r * 0.55, yBase - r * 0.35, r * 0.66, 0, 6.283);
-      ctx.arc(x + r * 0.55, yBase - r * 0.35, r * 0.66, 0, 6.283);
-      ctx.fill();
+/* ---- background trees are painted ONCE into offscreen sprites (irregular
+   shaded canopies, tapered curved trunks, soft halo edges), then stamped.
+   Repainted only when the season crosses a 1/16 step. Flat circles on
+   poles read as wallpaper; sprites read as a forest. ---- */
+const treeSprites = { far: [], near: [], seasonQ: -1 };
+let skyMidCol = [178, 214, 188];
+function makeTreeSprite(seed, R, baseCol, lightCol, trunkCol){
+  const rnd = mulberry32(seed);
+  const SS = 2;
+  const w = Math.ceil(R * 2.7), h = Math.ceil(R * 3.5);
+  const c = document.createElement('canvas'); c.width = w * SS; c.height = h * SS;
+  const g = c.getContext('2d'); g.scale(SS, SS);
+  const cx = w / 2, baseY = h - 3, topY = R * 1.12;
+  const lean = (rnd() - 0.5) * R * 0.36;
+  g.strokeStyle = trunkCol; g.lineCap = 'round';
+  g.lineWidth = R * 0.17;
+  g.beginPath(); g.moveTo(cx, baseY); g.quadraticCurveTo(cx + lean * 0.3, baseY - R * 1.1, cx + lean * 0.7, topY + R * 0.55); g.stroke();
+  g.lineWidth = R * 0.09;
+  g.beginPath(); g.moveTo(cx + lean * 0.7, topY + R * 0.55); g.quadraticCurveTo(cx + lean, topY + R * 0.2, cx + lean, topY); g.stroke();
+  g.lineWidth = R * 0.055;
+  const bDir = rnd() < 0.5 ? -1 : 1;
+  g.beginPath(); g.moveTo(cx + lean * 0.45, baseY - R * 1.15);
+  g.quadraticCurveTo(cx + lean * 0.45 + bDir * R * 0.3, baseY - R * 1.42, cx + lean * 0.45 + bDir * R * 0.52, baseY - R * 1.54); g.stroke();
+  const blobs = [];
+  const n = 8 + (rnd() * 3 | 0);
+  for (let i = 0; i < n; i++){
+    const a = rnd() * 6.283, d = rnd() * R * 0.62;
+    blobs.push({ x: cx + lean + Math.cos(a) * d, y: topY + Math.sin(a) * d * 0.72, r: R * (0.42 + rnd() * 0.5) });
+  }
+  blobs.push({ x: cx + lean, y: topY, r: R * 0.92 });
+  g.fillStyle = baseCol; g.globalAlpha = 0.32;
+  for (const b of blobs){ g.beginPath(); g.arc(b.x, b.y, b.r * 1.1, 0, 6.283); g.fill(); }
+  g.globalAlpha = 1;
+  for (const b of blobs){ g.beginPath(); g.arc(b.x, b.y, b.r, 0, 6.283); g.fill(); }
+  // dappled light and shade: small SOFT radial spots, sun side bright,
+  // lee side dark. Hard pale discs read as holes; gradients read as light.
+  for (const b of blobs){
+    const spots = 2 + (rnd() * 3 | 0);
+    for (let i = 0; i < spots; i++){
+      const lx = b.x + (rnd() - 0.68) * b.r * 0.85, ly = b.y + (rnd() - 0.68) * b.r * 0.85;
+      const lr = b.r * (0.16 + rnd() * 0.24);
+      const gr = g.createRadialGradient(lx, ly, 0, lx, ly, lr);
+      gr.addColorStop(0, `rgba(${lightCol[0]},${lightCol[1]},${lightCol[2]},0.5)`);
+      gr.addColorStop(1, `rgba(${lightCol[0]},${lightCol[1]},${lightCol[2]},0)`);
+      g.fillStyle = gr; g.beginPath(); g.arc(lx, ly, lr, 0, 6.283); g.fill();
+      const sx2 = b.x + (rnd() - 0.32) * b.r * 0.85, sy2 = b.y + (rnd() - 0.32) * b.r * 0.85;
+      const sr = b.r * (0.16 + rnd() * 0.24);
+      const sg = g.createRadialGradient(sx2, sy2, 0, sx2, sy2, sr);
+      sg.addColorStop(0, 'rgba(10,22,14,0.20)'); sg.addColorStop(1, 'rgba(10,22,14,0)');
+      g.fillStyle = sg; g.beginPath(); g.arc(sx2, sy2, sr, 0, 6.283); g.fill();
     }
   }
+  return { c, w, h, anchorX: cx, anchorY: baseY };
+}
+function buildTreeSprites(){
+  const q = Math.round(S.season * 16);
+  if (q === treeSprites.seasonQ && treeSprites.far.length) return;
+  treeSprites.seasonQ = q;
+  const s = q / 16;
+  const farBase = mixc([70, 102, 78], [122, 92, 60], s);
+  const nearBase = mixc([36, 68, 44], [96, 62, 38], s);
+  const farLight = mixc(farBase, [255, 240, 200], 0.34);
+  const nearLight = mixc(nearBase, [255, 240, 200], 0.28);
+  treeSprites.far = []; treeSprites.near = [];
+  for (let i = 0; i < 6; i++) treeSprites.far.push(makeTreeSprite(4000 + i * 131, 54, css(farBase), farLight, 'rgba(54,46,36,0.8)'));
+  for (let i = 0; i < 6; i++) treeSprites.near.push(makeTreeSprite(9000 + i * 173, 76, css(nearBase), nearLight, 'rgba(42,34,25,0.95)'));
+}
+function drawParallax(factor, sprites, seed, alpha){
+  const spacingY = 265, spacingX = 235;
+  const off = (S.camY * factor) % spacingY;
+  const rowShift = Math.floor(S.camY * factor / spacingY);
+  ctx.globalAlpha = alpha;
+  for (let row = -1; row < H / spacingY + 2; row++){
+    const yBase = row * spacingY + off;
+    const rowSeed = seed + (row + rowShift) * 101;
+    for (let i = -1; i < W / spacingX + 2; i++){
+      const rnd = mulberry32(rowSeed + i * 57);
+      if (rnd() < 0.18) continue;                       // gaps break the wallpaper grid
+      const sp = sprites[(rnd() * sprites.length) | 0];
+      const scale = 0.7 + rnd() * 0.75;
+      const x = i * spacingX + rnd() * 120 - 60 + Math.sin((row + rowShift) * 3.7 + i) * 14;
+      const y = yBase + (rnd() - 0.5) * 60;
+      ctx.drawImage(sp.c, x - sp.anchorX * scale, y - sp.anchorY * scale, sp.w * scale, sp.h * scale);
+    }
+  }
+  ctx.globalAlpha = 1;
 }
 function drawGround(){
   const gy = sy(0);
   if (gy < -80 || gy > H + 200) return;
-  ctx.fillStyle = '#4a3826'; ctx.fillRect(0, gy, W, H - gy + 2);
+  const soil = ctx.createLinearGradient(0, gy, 0, H);
+  soil.addColorStop(0, '#54402a'); soil.addColorStop(0.25, '#463522'); soil.addColorStop(1, '#332619');
+  ctx.fillStyle = soil; ctx.fillRect(0, gy, W, H - gy + 2);
+  // speckles and a few roots, deterministic per frame (seeded)
+  const srnd = mulberry32(7);
+  for (let i = 0; i < 70; i++){
+    const x = srnd() * W, y = gy + 8 + srnd() * Math.max(8, H - gy - 16);
+    ctx.fillStyle = srnd() < 0.5 ? 'rgba(0,0,0,0.16)' : 'rgba(255,230,180,0.07)';
+    ctx.beginPath(); ctx.arc(x, y, 1 + srnd() * 2.4, 0, 6.283); ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(30,20,12,0.5)'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+  for (let i = 0; i < 4; i++){
+    const x = srnd() * W;
+    ctx.beginPath(); ctx.moveTo(x, gy + 2);
+    ctx.quadraticCurveTo(x + (srnd() - 0.5) * 26, gy + 16, x + (srnd() - 0.5) * 44, gy + 26 + srnd() * 10);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(20,26,16,0.35)'; ctx.fillRect(0, gy + 2, W, 5);
   ctx.fillStyle = '#5d7d3a'; ctx.fillRect(0, gy - 7, W, 9);
   ctx.fillStyle = '#6f9a48';
   const rnd = mulberry32(99);
@@ -826,8 +925,15 @@ function drawGoal(){
 }
 function drawWorld(){
   drawSky();
-  drawParallax(0.3, 'rgba(46,84,54,0.5)', 1234, 52);
-  drawParallax(0.55, 'rgba(30,60,38,0.75)', 777, 74);
+  buildTreeSprites();
+  drawParallax(0.3, treeSprites.far, 1234, 0.8);
+  // haze over the far forest pushes it back a valley
+  ctx.fillStyle = css(skyMidCol, 0.20); ctx.fillRect(0, 0, W, H);
+  drawParallax(0.55, treeSprites.near, 777, 0.96);
+  // weather washes sit over the forest, under the gameplay
+  const stormW = stormAmt(S.camY + 300), crownW = crownAmt(S.camY + 300);
+  if (stormW > 0.02){ ctx.fillStyle = `rgba(88,100,112,${(stormW * 0.16).toFixed(3)})`; ctx.fillRect(0, 0, W, H); }
+  if (crownW > 0.02){ ctx.fillStyle = `rgba(255,196,92,${(crownW * 0.08).toFixed(3)})`; ctx.fillRect(0, 0, W, H); }
   drawGround();
   if (!S.endless) drawGoal();
   // shade clouds: soft overlapping puffs, dark enough to read as shade
