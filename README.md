@@ -75,6 +75,12 @@ question is how high you get. Height and score carry the run.
 - The test harnesses in `tests/harness.js` drive the real game code
   headlessly (balance bots, keyboard-only win, frost wisps, ghost,
   and regression tests for the critic rounds): `node tests/harness.js`.
+- The four hero actors (the sprout tip, sun orbs, frost wisps, and
+  sun fruits) are generated watercolour sprites, embedded in the
+  file as data URIs and sized near their on-screen size so software
+  rendering stays fast; each keeps its procedural drawing as a
+  fallback. Sprite sources and the keying script live in
+  `sprites-src/`, the processed sprites in `sprites-final/`.
 
 Built with AI assistance (allowed by the round rules) during the round
 window, 14-16 October 2026.
