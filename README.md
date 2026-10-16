@@ -112,7 +112,10 @@ and the only question is how high you get. Height and score carry the run.
   the soil, or into a lower trunk that does. One that reaches the soil
   bends into the nearest painted root and fades along that wood, and
   the growing vine does the same where it leaves the soil. The pine
-  crown sits on that wood by a short stem. Those are exported near the
+  crown is a mound of needles, seated on that wood like the other
+  crowns. Rival stalks and the vine are solid limbs in that same tan.
+  A wrapped bark strip drew stripes, so it is not used. The sprites
+  are exported near the
   size they are drawn at, so a small bitmap is not stretched across
   the frame. The leaf sprig the branch
   wears along its stalk, a painted soil cross-section for the
