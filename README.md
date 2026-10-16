@@ -96,9 +96,11 @@ and the only question is how high you get. Height and score carry the run.
   headlessly (balance bots, keyboard-only win, frost wisps, ghost,
   pause menu, grounded background trees, and regression tests for the
   critic rounds): `node tests/harness.js`.
-- Typography is embedded, not system-default: Baloo 2 for display
-  type and Quicksand for text (latin subsets, SIL Open Font License
-  1.1), inlined as data URIs so the file stays self-contained.
+- Typography is embedded, not system-default: Baloo 2 for the logo
+  and buttons, Quicksand for body text, and Fraunces (a soft serif)
+  for HUD labels, numerals, and in-world text (latin subsets, SIL
+  Open Font License 1.1), inlined as data URIs so the file stays
+  self-contained.
 - The four hero actors (the sprout tip, sun orbs, frost wisps, and
   sun fruits) are generated watercolour sprites, embedded in the
   file as data URIs and sized near their on-screen size so software
