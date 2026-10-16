@@ -138,6 +138,7 @@ def main():
         ("asset-sprig.jpg", "sprig.png", 192),
         ("asset-canopy-oak.jpg", "canopy-oak.png", 288),
         ("asset-canopy-blossom.jpg", "canopy-blossom.png", 288),
+        ("asset-canopy-pine.jpg", "canopy-pine.png", 288),
         ("asset-deer.jpg", "deer.png", 224),
         ("asset-fox.jpg", "fox.png", 256),
         ("asset-rabbit.jpg", "rabbit.png", 160),

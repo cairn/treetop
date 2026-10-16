@@ -31,7 +31,7 @@ Four biomes, each with its own weather and temper:
 
 Systems to master:
 
-- **Sap is life.** Growth drains it; sunlight refills it (+20); rain is
+- **Sap is life.** Growth drains it; sunlight refills it (+22); rain is
   a sip (+7); shade clouds drain it fast and slow growth.
 - **Surge.** Hold the mouse button, space, or a second finger to grow
   45% faster at roughly double the drain. Sprint the Storm Band; drift
@@ -112,6 +112,12 @@ and the only question is how high you get. Height and score carry the run.
   magenta-keyed from
   `sprites-src/asset-*.jpg` into `sprites-final/`. Sprite sources
   and the keying script live in `sprites-src/`.
+- A cinematic layer borrows its staging from Krillbite's *The Plan*:
+  light shafts behind the silhouettes that widen and warm as the
+  crown nears, backlit motes drifting in the light, out-of-focus
+  foreground leaves framing the edges of the frame, and a permanent
+  soft vignette. Atmosphere as composition, not decoration; the
+  gameplay plane stays sharp and readable in front of it.
 
 Built with AI assistance (allowed by the round rules) during the round
 window, 14-16 October 2026.
@@ -127,9 +133,10 @@ window, 14-16 October 2026.
   [`docs/win.png`](docs/win.png) · [`docs/portrait.png`](docs/portrait.png)
   (phone layout) · share card [`docs/share.png`](docs/share.png).
 - **Balance, measured:** scripted playtest bots drive the real game
-  code. A passive centre-line run starves at ~37 m; an orb-seeking run
-  wins in ~55 s against the 100-second season; a casual run wins in
-  ~45 s. The economy was tuned against those bots, not by feel.
+  code. A passive centre-line run starves at ~52 m; an orb-seeking run
+  wins in ~55 s against the 100-second season; a moderate run (quarter
+  second steering reactions, imperfect aim, no surge) wins in ~58 s.
+  The economy was tuned against those bots, not by feel.
 - **Performance, measured:** the game's own JavaScript costs about
   2 ms per frame; in a fully software-rendered browser (no GPU) it
   holds 57-60 fps. Rendering uses prerendered tree sprites and width
