@@ -4,7 +4,7 @@
 [Project Treetop Round 01 (Games)](https://twigpine.com/treetop).
 
 You are a sprout. Your branch never stops growing. Steer its tip with the
-mouse, touch, or arrow keys and climb 120 metres to the canopy before
+mouse, touch, arrow keys, or a controller and climb 120 metres to the canopy before
 winter, or before your sap runs out.
 
 ## Play
@@ -51,21 +51,41 @@ Systems to master:
 ## Endless Autumn
 
 The second button on the title screen. No winter deadline and no top:
-the seasons cycle, the drain deepens a little each autumn, and the only
-question is how high you get. Height and score carry the run.
+the course generates new blocks ahead of you and prunes behind you
+forever, the seasons cycle, the drain deepens a little each autumn,
+and the only question is how high you get. Height and score carry the run.
 
 ## Craft notes
 
 - The course is generated from a fixed seed, so every player races the
   same sky. Rival branch layouts, shade, and orb trails are identical
   run to run; mastery is real.
-- The soundtrack is a generative pentatonic sequencer (Web Audio, no
-  audio files) that layers bass, harmony, and bells as you cross
-  biomes, over wind and rain noise beds driven by the actual weather
-  simulation.
+- The soundtrack is a composed 16-bar theme in D major ("The Climb":
+  antecedent bars 1-8 ending on the dominant, consequent 9-16 resolving
+  home, over a I-V-vi-IV progression), re-orchestrated adaptively as
+  you climb: solo lead and bass on the Forest Floor, pad, counter-melody
+  and arpeggio through the Trunk, driving kick, hats and pulsing bass
+  in the Storm Band, and bells with an octave-radiant lead in the Crown.
+  Late season adds tremolo strings and a borrowed-minor winter variant.
+  All synthesized with Web Audio (no audio files) through a bus mix with
+  generated-impulse reverb, dotted-eighth delay, glue compression and
+  limiting, over wind and rain noise beds driven by the actual weather
+  simulation. Pickup chimes are pitched in the score's key. At game
+  over the score resolves onto a final tonic chord and fades to
+  silence instead of looping behind the results card.
 - Best height, lifetime stats, and best score persist in `localStorage`.
-- Pauses automatically when the tab loses focus. `P` pause, `M` mute,
-  `R` restart, `E` from the title for Endless.
+- **Controller:** any standard gamepad steers with the left stick or
+  D-pad, surges on the bottom face button or right trigger, pauses on
+  Start/Options or the top face button, toggles sound on the left face
+  button, and confirms with the bottom face button. PlayStation pads
+  (DualSense and DualShock are detected by name and vendor ID) get the
+  △ ○ ✕ □ shape glyphs in their colours on every prompt; other pads
+  get ABXY glyphs.
+- Pauses automatically when the tab loses focus. `Esc` or `P` opens the
+  pause menu (resume, restart, sound, quit to title), `M` mute,
+  `E` from the title for Endless. Restarting a live run is only the
+  pause menu's **Restart run** button: there is no restart key to hit
+  by accident.
 - The results card has a **Share result** button (copies your score
   line and the play link), and its advice line is cause-aware: starve
   with few suns collected and it tells you to hunt orbs; die to winter
@@ -74,13 +94,24 @@ question is how high you get. Height and score carry the run.
   motion on the win.
 - The test harnesses in `tests/harness.js` drive the real game code
   headlessly (balance bots, keyboard-only win, frost wisps, ghost,
-  and regression tests for the critic rounds): `node tests/harness.js`.
+  pause menu, grounded background trees, and regression tests for the
+  critic rounds): `node tests/harness.js`.
+- Typography is embedded, not system-default: Baloo 2 for display
+  type and Quicksand for text (latin subsets, SIL Open Font License
+  1.1), inlined as data URIs so the file stays self-contained.
 - The four hero actors (the sprout tip, sun orbs, frost wisps, and
   sun fruits) are generated watercolour sprites, embedded in the
   file as data URIs and sized near their on-screen size so software
   rendering stays fast; each keeps its procedural drawing as a
-  fallback. Sprite sources and the keying script live in
-  `sprites-src/`, the processed sprites in `sprites-final/`.
+  fallback. The obstacles and background have generated assets too:
+  far and near background trees, oak, pine, and blossom rival
+  canopies, the shade canopy cloud, the leaf sprig the branch
+  wears along its stalk, a painted soil cross-section for the
+  takeoff ground, and wildlife (a deer and fox on the near hill, a
+  rabbit at the ground line, bluebirds crossing the sky), all
+  magenta-keyed from
+  `sprites-src/asset-*.jpg` into `sprites-final/`. Sprite sources
+  and the keying script live in `sprites-src/`.
 
 Built with AI assistance (allowed by the round rules) during the round
 window, 14-16 October 2026.
@@ -96,8 +127,8 @@ window, 14-16 October 2026.
   [`docs/win.png`](docs/win.png) · [`docs/portrait.png`](docs/portrait.png)
   (phone layout) · share card [`docs/share.png`](docs/share.png).
 - **Balance, measured:** scripted playtest bots drive the real game
-  code. A passive centre-line run starves at ~50 m; an orb-seeking run
-  wins in ~65 s with ~35 s of season to spare; a casual run wins in
+  code. A passive centre-line run starves at ~37 m; an orb-seeking run
+  wins in ~55 s against the 100-second season; a casual run wins in
   ~45 s. The economy was tuned against those bots, not by feel.
 - **Performance, measured:** the game's own JavaScript costs about
   2 ms per frame; in a fully software-rendered browser (no GPU) it

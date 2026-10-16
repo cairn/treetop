@@ -1,7 +1,7 @@
 /* TREETOP test harnesses: run the real game code headlessly in a vm
    with stubbed DOM/canvas and drive frames manually.
    Usage: node tests/harness.js [suite ...]
-   Suites: balance wisps keyboard critic ghost  (default: all)
+   Suites: balance wisps keyboard critic pause endless gamepad grounded ghost  (default: all)
    The DOM stubs return an element for any id, so they cannot catch
    missing-node bugs; only real-browser captures can. */
 const fs = require('fs'), vm = require('vm'), path = require('path');
@@ -14,7 +14,7 @@ function boot(storageInit, width) {
     if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => grad;
     if (typeof k === 'string') return t[k] !== undefined ? t[k] : (() => {});
     return undefined;
-  }, set: () => true });
+  }, set: (t, k, v) => { t[k] = v; return true; } });
   const el = id => ({ id, style: {}, textContent: '', classList: { toggle() {}, add() {}, remove() {} },
     addEventListener() {}, setPointerCapture() {}, getContext: () => ctxStub });
   const els = new Map();
@@ -25,13 +25,15 @@ function boot(storageInit, width) {
       getElementById: id => { if (!els.has(id)) els.set(id, el(id)); return els.get(id); } },
     performance: { now: () => simNow }, location: { search: '', href: 'https://example.test/' }, URLSearchParams };
   sandbox.window = sandbox; sandbox.innerWidth = width || 1100; sandbox.innerHeight = 750; sandbox.devicePixelRatio = 1;
-  sandbox.addEventListener = () => {};
+  const listeners = {};
+  sandbox.addEventListener = (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); };
   sandbox.requestAnimationFrame = cb => { rafCb = cb; };
   sandbox.Path2D = class { moveTo() {} lineTo() {} };
   vm.createContext(sandbox); vm.runInContext(src, sandbox);
   const run = c => vm.runInContext(c, sandbox);
   const frames = (n, ms = 16.7) => { for (let i = 0; i < n; i++) { simNow += ms; const cb = rafCb; rafCb = null; cb(simNow); if (!rafCb) throw new Error('rAF chain broke'); } };
-  return { run, frames, sandbox };
+  const key = k => { for (const fn of listeners.keydown || []) fn({ key: k, preventDefault() {} }); };
+  return { run, frames, sandbox, key };
 }
 const AIM = `(() => {
   let best = null, bd = 1e9;
@@ -115,6 +117,77 @@ const suites = {
       const h = run('S.heading');
       console.log('portrait steering heading:', h.toFixed(3), h < -0.15 && h > -0.6 ? 'OK' : 'FAIL (want near -0.375, not -0.785)'); }
   },
+  pause() {
+    const { run, frames, key } = boot({});
+    run('startGame(false)'); frames(10);
+    const t0 = run('S.time'), y0 = run('S.tip.y');
+    key('Escape');
+    frames(20);
+    const frozen = run('S.time') === t0 && run('S.tip.y') === y0;
+    console.log('esc opens pause and freezes run:', run('S.mode') === 'pause' && frozen ? 'OK' : 'FAIL');
+    console.log('pause menu shows run stats:', run(`document.getElementById('pause-stats').textContent`).includes('score') ? 'OK' : 'FAIL');
+    key('Escape'); frames(5);
+    console.log('esc resumes:', run('S.mode') === 'play' && run('S.time') > t0 ? 'OK' : 'FAIL');
+    const plays = run('S.stats.plays'), t1 = run('S.time');
+    key('r'); frames(3);
+    console.log('r does not restart a live run:', run('S.mode') === 'play' && run('S.stats.plays') === plays && run('S.time') > t1 ? 'OK' : 'FAIL');
+    key('Escape'); key('r'); frames(2);
+    console.log('r does not restart from pause:', run('S.mode') === 'pause' && run('S.stats.plays') === plays ? 'OK' : 'FAIL');
+    key('Escape'); run('quitToTitle()');
+    console.log('quit to title:', run('S.mode') === 'title' ? 'OK' : 'FAIL');
+  },
+  endless() {
+    const { run, frames } = boot({});
+    run('startGame(true)');
+    run('S.tip.y = 20000; S.sap = 100;');
+    frames(10);
+    const r = run('({ ahead: world.orbs.some(o => o.y > 20000), genTop, orbs: world.orbs.length, rivals: world.rivals.length })');
+    console.log('endless generates ahead and stays bounded:', JSON.stringify(r), r.ahead && r.genTop > 22800 && r.orbs < 200 ? 'OK' : 'FAIL');
+  },
+  gamepad() {
+    const { run, frames, sandbox } = boot({});
+    const btns = Array.from({ length: 10 }, () => ({ pressed: false }));
+    sandbox.navigator = { getGamepads: () => [{ connected: true, id: 'DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)', axes: [-1, -1], buttons: btns }] };
+    run('startGame(false)'); frames(30);
+    const h = run('S.heading');
+    console.log('gamepad stick steers up-left:', h.toFixed(3), h < -1.9 ? 'OK' : 'FAIL');
+    btns[0].pressed = true; frames(3);
+    console.log('gamepad A surges:', run('S.surge') === true || run('S.sap') < 100 ? 'OK' : 'FAIL');
+    console.log('playstation pad detected with shape glyphs:', run('pad.kind') === 'ps' && run(`document.getElementById('padline-title').innerHTML`).includes('✕') ? 'OK' : 'FAIL');
+    btns[0].pressed = false; btns[9].pressed = true; frames(3);
+    console.log('gamepad Start pauses:', run('S.mode') === 'pause' ? 'OK' : 'FAIL');
+    btns[9].pressed = false; frames(2); btns[1].pressed = true; frames(3);
+    console.log('gamepad B resumes:', run('S.mode') === 'play' ? 'OK' : 'FAIL');
+  },
+  grounded() {
+    const { run, frames } = boot({});
+    run('startGame(false)'); frames(3);
+    const low = run(`(() => {
+      const draws = []; const old = ctx.drawImage;
+      ctx.drawImage = (img, x, y, w, h) => draws.push({ img, y, h });
+      S.camY = 0; drawWorld(); ctx.drawImage = old;
+      const sprites = treeSprites.far.concat(treeSprites.near);
+      const trees = draws.filter(d => sprites.some(s => s.c === d.img));
+      const want = H * 0.68 + 6;
+      const ok = trees.length > 3 && trees.every(d => {
+        const sp = sprites.find(s => s.c === d.img);
+        return Math.abs(d.y + sp.anchorY * (d.h / sp.h) - want) < 2;
+      });
+      return { n: trees.length, ok };
+    })()`);
+    console.log('background trees stand on the ground:', JSON.stringify(low), low.ok ? 'OK' : 'FAIL');
+    const high = run(`(() => {
+      const draws = []; const old = ctx.drawImage;
+      ctx.drawImage = (img, x, y, w, h) => draws.push({ img, y, h });
+      S.camY = 3000; drawWorld(); ctx.drawImage = old;
+      const sprites = treeSprites.far.concat(treeSprites.near);
+      const trees = draws.filter(d => sprites.some(s => s.c === d.img));
+      const band = H * 0.68 - (1050 - S.camY * 0.35);
+      const ok = trees.length > 3 && trees.every(d => d.y + d.h > band + 30);
+      return { n: trees.length, ok };
+    })()`);
+    console.log('high forest is canopy below, no floating trunks:', JSON.stringify(high), high.ok ? 'OK' : 'FAIL');
+  },
   ghost() {
     const { run, frames, sandbox } = boot({});
     run('startGame(false)');
@@ -136,4 +209,9 @@ const suites = {
 
 const want = process.argv.slice(2);
 const names = want.length ? want : Object.keys(suites);
+let failures = 0;
+const origLog = console.log;
+console.log = (...a) => { if (a.join(' ').includes('FAIL')) failures++; origLog(...a); };
 for (const n of names) { console.log('== ' + n); suites[n](); }
+console.log = origLog;
+if (failures) { origLog(failures + ' check(s) FAILED'); process.exitCode = 1; }

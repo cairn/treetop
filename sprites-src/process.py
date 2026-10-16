@@ -127,6 +127,28 @@ def main():
     keyed_sprite(os.path.join(SRC, names["fruit"]), "fruit.png", 128)
     glow_sprite(os.path.join(SRC, names["orb"]), "orb.png", 160)
     glow_sprite(os.path.join(SRC, names["wisp"]), "wisp.png", 160)
+    # obstacle and background assets (magenta-keyed generated art)
+    for src, out, edge in [
+        ("asset-tree-far.jpg", "tree-far.png", 256),
+        ("asset-tree-near.jpg", "tree-near.png", 256),
+        ("asset-rival-oak.jpg", "rival-oak.png", 320),
+        ("asset-rival-pine.jpg", "rival-pine.png", 320),
+        ("asset-rival-blossom.jpg", "rival-blossom.png", 320),
+        ("asset-shade.jpg", "shade.png", 320),
+        ("asset-sprig.jpg", "sprig.png", 192),
+        ("asset-canopy-oak.jpg", "canopy-oak.png", 288),
+        ("asset-canopy-blossom.jpg", "canopy-blossom.png", 288),
+        ("asset-deer.jpg", "deer.png", 224),
+        ("asset-fox.jpg", "fox.png", 256),
+        ("asset-rabbit.jpg", "rabbit.png", 160),
+        ("asset-bluebird.jpg", "bluebird.png", 192),
+    ]:
+        keyed_sprite(os.path.join(SRC, src), out, edge)
+    # takeoff ground: a full-frame soil cross-section, no keying needed
+    ground = Image.open(os.path.join(SRC, "asset-ground.jpg")).convert("RGB")
+    ground.thumbnail((768, 768), Image.LANCZOS)
+    ground.save(os.path.join(OUT, "ground.jpg"), quality=82, optimize=True)
+    print("ground.jpg", ground.size, os.path.getsize(os.path.join(OUT, "ground.jpg")), "bytes")
 
 
 if __name__ == "__main__":
