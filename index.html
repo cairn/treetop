@@ -127,6 +127,10 @@
   #finalstats{display:flex;gap:10px;justify-content:center;margin:14px 0 20px;flex-wrap:wrap}
   #finalstats .stat{min-width:104px}
   #bestline{font-size:13px;color:var(--accent);min-height:18px;margin-top:10px;font-weight:600}
+  .btnrow{display:flex;gap:10px;justify-content:center;align-items:stretch;flex-wrap:wrap}
+  .btnrow .btn{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1 1 0;max-width:235px}
+  #endlessbtn small{display:block;font-size:11px;font-weight:600;letter-spacing:.05em;opacity:.78;margin-top:3px}
+  .endless-note{font-size:12.5px;line-height:1.55;color:var(--ink-dim);max-width:470px;margin:8px auto 0}
   .hidden{display:none!important}
   @media (max-width:560px){ .stat .v{font-size:19px} #sapwrap{min-width:130px}
     .screen{padding:10px} .card{border-radius:16px} .keys{font-size:11.5px} }
@@ -145,6 +149,16 @@
     .eyebrow{display:none}
     h1{font-size:clamp(30px,9vmin,44px)}
     .tagline{display:none}
+    .endless-note{display:none}
+    .howto{gap:4px 12px;margin-bottom:8px}
+    .howto div{font-size:11px;line-height:1.3}
+    .tstats{display:none}
+    #bestline{min-height:0;margin-top:4px}
+    .keys{margin-top:6px}
+    #levelrow{margin:6px 0 2px}
+    .lvlchip{padding:5px 9px;font-size:11px}
+    .lvlchip b{display:inline;font-size:12px;margin-right:5px}
+    .lvlchip .rec{display:none}
   }
   @media (max-width:700px){
     .hud-top{flex-wrap:wrap;padding:calc(10px + env(safe-area-inset-top)) 10px 10px;gap:8px}
@@ -196,9 +210,12 @@
       <div><span class="dot" style="background:#8fd0ff"></span><b>Rain</b> is a drink on the way up. Catch the drops.</div>
       <div><span class="dot" style="background:#7d9284;box-shadow:inset 0 0 0 2px #33413a"></span><b>Shade</b> (the dark drifting canopies) drains you fast, <b>wind</b> bends you, rival trees block you.</div>
     </div>
-    <button class="btn" id="playbtn">Start growing</button>
-    <button class="btn ghost" id="endlessbtn">Endless Autumn</button>
+    <div class="btnrow">
+      <button class="btn" id="playbtn">Start growing</button>
+      <button class="btn ghost" id="endlessbtn">Endless Autumn<small>No finish line: climb forever</small></button>
+    </div>
     <div id="bestline"></div>
+    <div class="endless-note">Endless Autumn is the forever climb: no treetop and no win, the forest just grows upward, the seasons keep turning, and every autumn your sap drains a little faster. It ends when you wither. How high can you get?</div>
     <div class="tstats" id="title-stats"></div>
     <div class="keys"><b>Esc</b> or <b>P</b> pause &nbsp; <b>M</b> sound</div>
     <div class="keys" id="padline-title">Controller: <span class="padbtn">A</span> start &nbsp;<span class="padbtn">LS</span> steer &nbsp;<span class="padbtn">A</span>/<span class="padbtn">RT</span> surge &nbsp;<span class="padbtn">☰</span> pause</div>
@@ -1256,7 +1273,7 @@ function startGame(endless){
   reset(); S.mode = 'play';
   S.stats.plays++; saveStats();
   show('title', false); show('over', false); show('pause', false); $('hud').classList.add('on');
-  toast(S.endless ? 'Endless Autumn. Just keep growing' : 'Grow! Reach the light');
+  toast(S.endless ? 'Endless Autumn: no treetop. Climb until you wither' : 'Grow! Reach the light');
   musicStart();
 }
 /* Level select on the title card: name, height, its score, and your
