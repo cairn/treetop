@@ -110,8 +110,9 @@ and the only question is how high you get. Height and score carry the run.
   far and near background trees, oak, pine, and blossom rival
   canopies, the shade canopy cloud, the leaf sprig the branch
   wears along its stalk, a painted soil cross-section for the
-  takeoff ground, and wildlife (a deer and fox on the near hill, a
-  rabbit at the ground line, bluebirds crossing the sky). The sun
+  takeoff ground (tiled at device-pixel scale, not stretched),
+  and wildlife (a deer and fox on the near hill, a rabbit at the
+  ground line, bluebirds crossing the sky). The sun
   that crosses the sky is a painted glow too, with the flat disc
   kept until it loads. The solid sprites are magenta-keyed from
   `sprites-src/asset-*.jpg` into `sprites-final/`; the sky sun is

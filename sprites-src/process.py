@@ -177,10 +177,12 @@ def main():
         ("asset-drop.jpg", "drop.png", 96),
     ]:
         keyed_sprite(os.path.join(SRC, src), out, edge)
-    # takeoff ground: a full-frame soil cross-section, no keying needed
+    # takeoff ground: a full-frame soil cross-section, no keying needed.
+    # The game tiles this at one source pixel per device pixel, so a
+    # 768 px thumbnail stretched across the window is what made it blurry.
     ground = Image.open(os.path.join(SRC, "asset-ground.jpg")).convert("RGB")
-    ground.thumbnail((768, 768), Image.LANCZOS)
-    ground.save(os.path.join(OUT, "ground.jpg"), quality=82, optimize=True)
+    ground.thumbnail((1920, 1920), Image.LANCZOS)
+    ground.save(os.path.join(OUT, "ground.jpg"), quality=88, optimize=True, subsampling=2)
     print("ground.jpg", ground.size, os.path.getsize(os.path.join(OUT, "ground.jpg")), "bytes")
 
 
