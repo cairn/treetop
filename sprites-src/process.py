@@ -8,8 +8,10 @@ Two routes:
   luminance, which composites like a glow over any background. The
   sky sun's fringe is recoloured to warm light so it does not leave
   a muddy ring on a blue sky.
-Output sizes stay <= 512 px on the long edge; palette quantization
-keeps the embedded weight low.
+Most outputs stay <= 512 px on the long edge; palette quantization
+keeps the embedded weight low. The shade canopy and the ground strip
+are larger, because each is drawn across a wide slice of the screen
+and a small bitmap there goes soft.
 """
 import math
 import os
@@ -153,19 +155,25 @@ def main():
     keyed_sprite(os.path.join(SRC, names["fruit"]), "fruit.png", 128)
     glow_sprite(os.path.join(SRC, names["orb"]), "orb.png", 160)
     glow_sprite(os.path.join(SRC, names["wisp"]), "wisp.png", 160)
-    sky_sun(os.path.join(SRC, "asset-sun.jpg"), "sun.png", 320)
-    # obstacle and background assets (magenta-keyed generated art)
+    # drawn up to 280 CSS px, about 560 device px at DPR 2.
+    sky_sun(os.path.join(SRC, "asset-sun.jpg"), "sun.png", 640)
+    # obstacle and background assets (magenta-keyed generated art).
+    # Treeline scales are in units of a 256 px-tall bitmap (see treeFit
+    # in index.html). Far trees reach scale 1.6, near trees 1.2, and the
+    # goal crowns are drawn up to 360 CSS px wide.
     for src, out, edge in [
-        ("asset-tree-far.jpg", "tree-far.png", 256),
-        ("asset-tree-near.jpg", "tree-near.png", 256),
+        ("asset-tree-far.jpg", "tree-far.png", 896),
+        ("asset-tree-near.jpg", "tree-near.png", 768),
         ("asset-rival-oak.jpg", "rival-oak.png", 320),
         ("asset-rival-pine.jpg", "rival-pine.png", 320),
         ("asset-rival-blossom.jpg", "rival-blossom.png", 320),
-        ("asset-shade.jpg", "shade.png", 320),
+        # drawn up to ~450 CSS px wide, about 900 device px at DPR 2.
+        # The 320 px thumbnail was the soft cloud.
+        ("asset-shade.jpg", "shade.png", 1024),
         ("asset-sprig.jpg", "sprig.png", 192),
-        ("asset-canopy-oak.jpg", "canopy-oak.png", 288),
-        ("asset-canopy-blossom.jpg", "canopy-blossom.png", 288),
-        ("asset-canopy-pine.jpg", "canopy-pine.png", 288),
+        ("asset-canopy-oak.jpg", "canopy-oak.png", 768),
+        ("asset-canopy-blossom.jpg", "canopy-blossom.png", 768),
+        ("asset-canopy-pine.jpg", "canopy-pine.png", 768),
         ("asset-deer-graze.jpg", "deer-graze.png", 192),
         ("asset-fox-sit.jpg", "fox-sit.png", 224),
         ("asset-rabbit-hop.jpg", "rabbit-hop.png", 224),

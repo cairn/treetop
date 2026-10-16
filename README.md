@@ -108,13 +108,20 @@ and the only question is how high you get. Height and score carry the run.
   rendering stays fast; each keeps its procedural drawing as a
   fallback. The obstacles and background have generated assets too:
   far and near background trees, oak, pine, and blossom rival
-  canopies, the shade canopy cloud, the leaf sprig the branch
+  canopies, and the shade canopy cloud. A rival trunk runs down to
+  the soil, or into a lower trunk that does. One that reaches the soil
+  bends into the nearest painted root and fades along that wood, and
+  the growing vine does the same where it leaves the soil. The pine
+  crown sits on that wood by a short stem. Those are exported near the
+  size they are drawn at, so a small bitmap is not stretched across
+  the frame. The leaf sprig the branch
   wears along its stalk, a painted soil cross-section for the
   takeoff ground (tiled at device-pixel scale, not stretched),
   and wildlife (a deer and fox on the near hill, a rabbit at the
   ground line, bluebirds crossing the sky). The sun
-  that crosses the sky is a painted glow too, with the flat disc
-  kept until it loads. The solid sprites are magenta-keyed from
+  that crosses the sky is a painted glow too, exported near the
+  size it is drawn, with the flat disc kept until it loads. The solid
+  sprites are magenta-keyed from
   `sprites-src/asset-*.jpg` into `sprites-final/`; the sky sun is
   luminance-keyed from `asset-sun.jpg`. Raindrops are a painted
   teardrop (`drop.png`), with the flat ellipse kept until it loads.

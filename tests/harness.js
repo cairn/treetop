@@ -1,7 +1,7 @@
 /* TREETOP test harnesses: run the real game code headlessly in a vm
    with stubbed DOM/canvas and drive frames manually.
    Usage: node tests/harness.js [suite ...]
-   Suites: balance wisps keyboard critic pause endless gamepad grounded ghost captions  (default: all)
+   Suites: balance wisps keyboard critic pause endless gamepad grounded ghost captions pickups trunks camera roots  (default: all)
    The DOM stubs return an element for any id, so they cannot catch
    missing-node bugs; only real-browser captures can. */
 const fs = require('fs'), vm = require('vm'), path = require('path');
@@ -244,6 +244,144 @@ const suites = {
     quiet.run('startGame(false)');
     const q = quiet.run('({ g: S.showGoalCaption, h: S.showGhostCaption })');
     console.log('a later run stays quiet:', q.g === false && q.h === false ? 'OK' : 'FAIL', JSON.stringify(q));
+  },
+  pickups() {
+    const { run } = boot({}, 320);
+    const cases = [['canopy', 0, false, 2], ['spire', 1, false, 2], ['ancient', 2, false, 2], ['endless', 0, true, 8]];
+    let bad = 0, side = 0, checked = 0;
+    for (const [name, idx, endless, blocks] of cases) {
+      run(`S.endless = ${endless}; S.levelIdx = ${idx}; S.z = 0.87; rivalCount = 0;
+        world.orbs.length = 0; world.fruits.length = 0; world.drops.length = 0;
+        world.shades.length = 0; world.rivals.length = 0; world.birds.length = 0; world.wisps.length = 0;`);
+      for (let i = 0; i < blocks; i++) run(`buildBlock(${i} * GOAL_Y)`);
+      const r = run(`(() => {
+        const need = 58 * 1.12 / 2 + 46 * 1.08 * 0.57 + 8;
+        let bad = 0, side = 0, pairs = 0;
+        for (const f of world.fruits) {
+          if (Math.abs(f.x) < 170 || Math.abs(f.x) > 420) side++;
+          for (const o of world.orbs) {
+            if (Math.abs(f.y - o.y) > 500) continue;
+            pairs++;
+            if (Math.hypot(sx(f.x) - sx(o.x), sy(f.y) - sy(o.y)) < need - 0.25) bad++;
+          }
+        }
+        return { bad, side, pairs, fruits: world.fruits.length };
+      })()`);
+      bad += r.bad; side += r.side; checked += r.pairs;
+      if (r.bad || r.side || r.fruits < 2) console.log(name, JSON.stringify(r));
+    }
+    console.log('suns and sun fruit stay apart on a narrow phone:', bad === 0 && side === 0 && checked > 20 ? 'OK' : 'FAIL', bad, 'overlaps', side, 'off-side');
+  },
+  trunks() {
+    const { run } = boot({});
+    const cases = [[0, false, 2], [1, false, 2], [2, false, 2], [0, true, 6]];
+    let bad = 0, n = 0;
+    for (const [idx, endless, blocks] of cases) {
+      run(`S.endless = ${endless}; S.levelIdx = ${idx}; rivalCount = 0;
+        world.orbs.length = 0; world.fruits.length = 0; world.drops.length = 0;
+        world.shades.length = 0; world.rivals.length = 0; world.birds.length = 0; world.wisps.length = 0;`);
+      for (let i = 0; i < blocks; i++) run(`buildBlock(${i} * GOAL_Y)`);
+      const r = run(`(() => {
+        const onWood = (x, y, self) => {
+          for (const o of world.rivals) {
+            if (o === self) continue;
+            for (const line of [o.pts, o.stalk]) {
+              if (!line) continue;
+              for (let i = 0; i < line.length - 1; i++) {
+                const a = line[i], b = line[i + 1];
+                const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+                let t = ((x - a.x) * dx + (y - a.y) * dy) / l2;
+                t = Math.max(0, Math.min(1, t));
+                if (Math.hypot(a.x + dx * t - x, a.y + dy * t - y) < 3) return true;
+              }
+            }
+          }
+          return false;
+        };
+        let bad = 0, n = 0;
+        for (const r of world.rivals) {
+          n++;
+          const s = r.stalk, base = r.pts[0];
+          if (!s || s.length < 3) { bad++; continue; }
+          if (Math.hypot(s[1].x - base.x, s[1].y - base.y) > 1.5) bad++;
+          for (let i = 1; i < s.length; i++) {
+            if (s[i].y > s[i - 1].y + 0.5) bad++;
+            if (Math.hypot(s[i].x - s[i - 1].x, s[i].y - s[i - 1].y) > 140) bad++;
+          }
+          const end = s[s.length - 1];
+          if (end.y > 0.5 && !onWood(end.x, end.y, r)) bad++;
+        }
+        return { bad, n };
+      })()`);
+      bad += r.bad; n += r.n;
+      if (r.bad) console.log('level', idx, endless, JSON.stringify(r));
+    }
+    console.log('every rival trunk reaches soil or a lower trunk:', bad === 0 && n > 10 ? 'OK' : 'FAIL', bad, 'of', n);
+  },
+  camera() {
+    // play keeps the climbing tip on the vertical centre; the title
+    // demo keeps its own higher framing; takeoff stays on the soil
+    const { run, frames } = boot({});
+    run('startGame(false)');
+    run('S.tip.y = 900; S.tip.x = 0; S.heading = -Math.PI / 2; S.pointer = null; S.camY = 0;');
+    frames(120);
+    const play = run('sy(S.tip.y) - H / 2');
+    console.log('play centre:', play.toFixed(1), Math.abs(play) < 18 ? 'OK' : 'FAIL');
+    run('S.heading = -Math.PI * 0.25;');
+    frames(90);
+    const turned = run('sy(S.tip.y) - H / 2');
+    console.log('turned centre:', turned.toFixed(1), Math.abs(turned) < 18 ? 'OK' : 'FAIL');
+    run('S.tip.y = 8; S.camY = 400; S.heading = -Math.PI / 2;');
+    frames(40);
+    const low = run('sy(S.tip.y) - H / 2');
+    console.log('takeoff stays on the soil:', low.toFixed(1), low > 40 ? 'OK' : 'FAIL');
+    run("S.mode = 'title'; S.tip = { x: 0, y: 500 }; S.path = [{ x: 0, y: 0 }, { x: 0, y: 500 }]; S.z = 1;");
+    frames(20);
+    const attract = run('sy(S.tip.y) / H');
+    console.log('attract stays above centre:', attract.toFixed(2), attract < 0.36 ? 'OK' : 'FAIL');
+  },
+  roots() {
+    // a trunk that reaches the soil aims at a painted root mouth and
+    // arrives on it; a trunk that joins another is left alone. The
+    // sapling's own contact does the same. World stalks are not moved.
+    const { run } = boot({});
+    run('startGame(false)');
+    for (const [W, H] of [[1100, 750], [1680, 900], [390, 780], [800, 600]]) {
+      const r = run(`(() => {
+        W = ${W}; H = ${H}; DPR = 1; S.z = 0.9; S.camY = 0;
+        const fade = Math.round(1920 * 0.14);
+        const lay = { tileW: 1920, fade, step: 1920 - fade, gy: sy(0), destH: 934 };
+        let rooted = 0, joined = 0, miss = 0, far = 0;
+        for (const rv of world.rivals) {
+          const e = rv.stalk[rv.stalk.length - 1];
+          if (e.y > 0.5) { joined++; continue; }
+          rooted++;
+          const before = e.x;
+          const hit = nearestRoot(sx(e.x), lay);
+          const d = Math.abs(hit.x - sx(e.x));
+          if (d > lay.tileW * 0.2) far++;
+          const reach = rootReach(d);
+          if (Math.abs(bendToRoot(sx(e.x), 0, hit.x, reach) - hit.x) > 0.01) miss++;
+          if (Math.abs(bendToRoot(sx(e.x), reach + 5, hit.x, reach) - sx(e.x)) > 0.01) miss++;
+          if (e.x !== before) miss++;
+          const ap = approachPoints(rv.stalk, hit, reach);
+          if (ap.length < 2) miss++;
+          else {
+            const top = sy(ROOT_CUT), soil = sy(0);
+            if (Math.abs(ap[0].Y - top) > 1.5) miss++;
+            if (Math.abs(ap[ap.length - 1].Y - soil) > 1.5) miss++;
+            if (Math.abs(ap[ap.length - 1].X - hit.x) > 0.5) miss++;
+          }
+        }
+        const ph = nearestRoot(sx(S.path[0].x), lay);
+        const pd = Math.abs(ph.x - sx(S.path[0].x));
+        if (pd > lay.tileW * 0.2) far++;
+        if (Math.abs(bendToRoot(sx(0), 0, ph.x, rootReach(pd)) - ph.x) > 0.01) miss++;
+        return { rooted, joined, miss, far, pd: Math.round(pd) };
+      })()`);
+      const ok = r.miss === 0 && r.far === 0 && r.rooted >= 1 && r.joined >= 1;
+      console.log('roots ' + W + ':', JSON.stringify(r), ok ? 'OK' : 'FAIL');
+    }
   },
 };
 
