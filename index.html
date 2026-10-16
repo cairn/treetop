@@ -24,7 +24,7 @@
   html,body{height:100%;overflow:hidden;background:#0c1710}
   body{font-family:'Treetop Text',ui-rounded,"Avenir Next","Segoe UI",system-ui,sans-serif;color:var(--ink);
        -webkit-user-select:none;user-select:none;touch-action:none}
-  canvas{display:block;width:100vw;height:100vh;height:100dvh;cursor:crosshair}
+  canvas{display:block;width:100vw;height:100vh;height:100dvh;cursor:crosshair;touch-action:none}
 
   /* ---------- HUD ---------- */
   #hud{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .4s}
@@ -85,7 +85,7 @@
   .eyebrow{font-family:'Treetop Serif',Georgia,serif;font-size:11.5px;letter-spacing:.34em;text-transform:uppercase;color:var(--accent);font-weight:600}
   h1{font-family:'Treetop Display',ui-rounded,system-ui,sans-serif;font-size:clamp(36px,10vmin,76px);letter-spacing:.015em;line-height:.98;margin:8px 0 2px;font-weight:800}
   h1 .top{color:var(--leaf)}
-  .tagline{font-style:italic;color:var(--ink-dim);margin-bottom:18px}
+  .tagline{font-family:'Treetop Serif',Georgia,serif;font-style:italic;font-weight:600;font-size:17px;color:var(--ink-dim);margin-bottom:18px}
   .howto{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:10px 18px;text-align:left;margin:0 auto 20px;max-width:480px}
   .howto div{font-size:clamp(12.5px,2vmin,14px);line-height:1.45;color:var(--ink-dim)}
   .howto b{color:var(--ink)}
@@ -93,11 +93,25 @@
   /* buttons inherit pointer-events from their screen: re-enabling it
      here made every hidden screen's buttons clickable through the
      visible one (invisible Quit/Resume sat over Start growing) */
+  button:focus{outline:none}
+  /* keyboard and gamepad focus gets the game's own highlight, a warm
+     ring and lift, never the browser's default outline */
+  .btn:focus-visible, .lvlchip:focus-visible, #pausebtn:focus-visible{
+    box-shadow:0 0 0 2px rgba(255,201,94,.95), 0 0 0 6px rgba(255,201,94,.22), 0 12px 30px rgba(255,180,80,.35);
+    filter:brightness(1.12); transform:translateY(-1px);
+  }
   .btn{cursor:pointer;border:0;border-radius:99px;max-width:100%;
        padding:clamp(11px,2.2vmin,14px) clamp(22px,5vmin,34px);
        font:700 clamp(15px,2.4vmin,17px)/1 'Treetop Display',ui-rounded,"Avenir Next",system-ui,sans-serif;letter-spacing:.02em;
        background:linear-gradient(180deg,#ffd97a,#ffb84f);color:#2c1c05;
        box-shadow:0 10px 26px rgba(255,184,79,.35),inset 0 1px 0 rgba(255,255,255,.6)}
+  .btn{transition:box-shadow .15s ease, filter .15s ease, transform .1s ease}
+  #levelrow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:14px 0 6px}
+  .lvlchip{cursor:pointer;border:1px solid var(--panel-edge);background:rgba(255,255,255,.05);color:var(--ink-dim);
+           border-radius:14px;padding:8px 12px;font:600 12px/1.3 'Treetop Text',sans-serif;text-align:left;transition:border-color .15s,background .15s}
+  .lvlchip b{display:block;font-family:'Treetop Serif',Georgia,serif;font-size:14.5px;color:var(--ink)}
+  .lvlchip.sel{border-color:var(--accent);background:rgba(255,201,94,.13);color:var(--ink)}
+  .lvlchip .rec{font-size:10.5px;letter-spacing:.05em;color:var(--accent)}
   .btn:hover{filter:brightness(1.06)} .btn:active{transform:translateY(1px)}
   .keys{margin-top:16px;font-size:12.5px;color:var(--ink-dim)}
   .keys b{color:var(--ink);background:rgba(243,239,228,.12);border-radius:5px;padding:1px 6px}
@@ -174,7 +188,8 @@
     <div class="eyebrow">A tiny race against the seasons</div>
     <h1>TREE<span class="top">TOP</span></h1>
     <div class="tagline">from twig to treetop</div>
-    <div class="tagline" style="font-style:normal;color:var(--ink)"><b>Reach the treetop at 120 m before winter.</b> The season bar is your clock, and your sap is your life.</div>
+    <div class="tagline" id="lvldesc" style="font-style:normal;color:var(--ink)"><b>Reach the treetop at 120 m before winter.</b> The season bar is your clock, and your sap is your life.</div>
+    <div id="levelrow" role="group" aria-label="Choose a climb"></div>
     <div class="howto">
       <div><b>Grow.</b> Your branch never stops. Steer its tip with the mouse, touch, or arrow keys. <b>Hold the mouse button, Space, or a second finger</b> to surge: faster growth, faster drain.</div>
       <div><span class="dot" style="background:#ffd95e"></span><b>Sunlight becomes sap:</b> each golden sun you gather is +22 on the green SAP bar, and that bar drains as you grow. No sap, no growth.</div>
@@ -263,19 +278,32 @@ const BIOMES = [
   { name: 'The Crown',        until: 1e9 },
 ];
 const WIND_FACTOR = [0.7, 1.15, 1.5, 0.9];
+/* Levels: three climbs under taller skies. Same sprout, same physics;
+   each level is a longer course on its own seed with a season clock
+   sized to its height, a touch more thirst, its own ghost and best,
+   and its own score from the music registry. */
+const LEVELS = [
+  { id: 'canopy', name: 'The First Canopy', goal: 120, season: 100, seed: 0, drain: 1.0, music: 0, tag: 'Learn the light.' },
+  { id: 'spire', name: 'The Storm Spire', goal: 170, season: 128, seed: 9176, drain: 1.08, music: 1, tag: 'A taller, wilder sky.' },
+  { id: 'ancient', name: 'The Ancient Crown', goal: 220, season: 155, seed: 5511, drain: 1.16, music: 2, tag: 'The old tree. The long climb.' },
+];
+function goalY(){ return LEVELS[S.levelIdx].goal * PX_PER_M; }
+/* Altitude in "level metres": the story climb rescaled onto the
+   0-120 m shape all the weather tuning was written against (Endless
+   Autumn already cycles every 120 m). */
+function bandM(y){
+  return S.endless ? (y / PX_PER_M) % 120 : (y / PX_PER_M) / LEVELS[S.levelIdx].goal * 120;
+}
 function biomeAt(y){
-  // in Endless Autumn the bands cycle every 120 m, like the weather does;
-  // in the story climb altitude is absolute (the modulo would flip the
-  // biome back to Floor on the exact winning frame)
-  const m = S.endless ? (y / PX_PER_M) % 120 : y / PX_PER_M;
+  const m = bandM(y);
   return m < 30 ? 0 : m < 65 ? 1 : m < 95 ? 2 : 3;
 }
 function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 function stormAmt(y){
-  const mm = (y / PX_PER_M) % 120;               // storm band sits at 65-95 m of every 120
+  const mm = bandM(y);               // storm band sits at 65-95 of every 120 level-metres
   return Math.min(clamp01((mm - 57) / 9), clamp01((103 - mm) / 9));
 }
-function crownAmt(y){ return clamp01(((y / PX_PER_M) % 120 - 88) / 10); }
+function crownAmt(y){ return clamp01((bandM(y) - 88) / 10); }
 /* Storage can THROW in sandboxed iframes and privacy modes (some judges
    open entries embedded). A dead script at boot is the worst possible
    failure, so every access goes through this in-memory-backed helper. */
@@ -316,7 +344,7 @@ let genTop = 0, rivalCount = 0;
    and prunes behind it, so the climb has no top and the arrays stay
    bounded no matter how long the run lasts. */
 function buildBlock(base){
-  const rnd = mulberry32(20261014 + base);
+  const rnd = mulberry32(20261014 + base + (S.endless ? 0 : LEVELS[S.levelIdx].seed));
   const top = base + GOAL_Y;
   // frost wisps haunt the high light of each block
   for (let y = base + 3180; y < top - 60; y += 240 + rnd() * 150){
@@ -363,13 +391,13 @@ function buildBlock(base){
     }
   }
 }
-function buildWorld(H){
+function buildWorld(topY){
   world.orbs.length = 0; world.drops.length = 0; world.shades.length = 0;
   world.rivals.length = 0; world.birds.length = 0; world.fruits.length = 0; world.wisps.length = 0;
   rivalCount = 0;
-  buildBlock(0);
-  genTop = GOAL_Y;
-  if (H > GOAL_Y){ buildBlock(GOAL_Y); genTop = GOAL_Y * 2; }
+  genTop = 0;
+  // two blocks up front is plenty of headroom; Endless extends forever
+  while (genTop < Math.min(topY, GOAL_Y * 2)){ buildBlock(genTop); genTop += GOAL_Y; }
 }
 function extendWorld(){
   if (!S.endless) return;
@@ -389,7 +417,7 @@ function extendWorld(){
 /* ---------------- game state ---------------- */
 const S = {
   mode: 'title',            // title | play | pause | over
-  endless: false, time: 0, season: 0, cycle: 0,
+  endless: false, levelIdx: 0, time: 0, season: 0, cycle: 0,
   tip: { x: 0, y: 0 }, heading: -Math.PI / 2,
   path: [],                 // branch polyline {x,y}
   sap: SAP_MAX, height: 0, suns: 0, rains: 0, fruits: 0,
@@ -405,8 +433,15 @@ const S = {
   best: (() => { const v = parseInt(store.get('treetop-best'), 10); return Number.isFinite(v) && v > 0 ? v : 0; })(),
   bestTime: (() => { const v = parseFloat(store.get('treetop-besttime')); return Number.isFinite(v) && v > 0 ? v : 0; })(),
 };
+let curLevel = (() => { const v = parseInt(store.get('treetop-level'), 10); return Number.isFinite(v) && v >= 0 && v < LEVELS.length ? v : 0; })();
+S.levelIdx = curLevel;
+function loadLevelRecords(){
+  try { const r = JSON.parse(store.get('treetop-level-records')); return r && typeof r === 'object' ? r : {}; }
+  catch (e) { return {}; }
+}
+let levelRecords = loadLevelRecords();
 function reset(){
-  buildWorld(S.endless ? ENDLESS_Y : GOAL_Y);
+  buildWorld(S.endless ? ENDLESS_Y : goalY());
   S.time = 0; S.season = 0; S.cycle = 0; S.sap = SAP_MAX;
   S.tip = { x: 0, y: 6 }; S.heading = -Math.PI / 2;
   S.path = [{ x: 0, y: 0 }, { x: 0, y: 6 }];
@@ -545,7 +580,7 @@ const sndGustWarn = () => noiseBurst(1.0, 0.045, 300, 700);
 /* ===== "The Climb": theme, harmony, arrangement =====
    One chord per bar: D  A  Bm G | D  Bm G  A || D  A  Bm G | D  G  A  D
    Theme events: [bar, eighthInBar, midi, lengthInEighths, velocity] */
-const MUS = { on: false, step: 0, nextT: 0, timer: null, loop: 0, outro: false, outroT: 0 };
+const MUS = { on: false, step: 0, nextT: 0, timer: null, loop: 0, outro: false, outroT: 0, track: 0, pendingTrack: null };
 const STEP = 60 / 96 / 2;                 // 96 bpm, eighth notes
 const PENTA = [62, 64, 66, 69, 71, 74];   // D major pentatonic (kept name)
 /* Bass line for "The Climb": [eighthInBar, midi, lengthInEighths, velocity, minBiome].
@@ -622,6 +657,152 @@ function bassMidi(m, bar, winterPhrase){
   const pc = ((m % 12) + 12) % 12;
   return (pc === 6 || pc === 11) ? m - 1 : m;
 }
+/* ===== Track 1: "The Storm Spire" =====
+   A minor (harmonic dominant E major), 116 bpm eighths: driven and tense.
+   Progression (1 chord/bar): Am Am F E | Am Am F E | Am G F E | Am Dm E Am.
+   Antecedent bars 1-8 end on the dominant E; consequent 9-16 drives
+   through G-F-E and Dm-E back to Am. The bass is a written pulse line:
+   tier 0 states root (eighth 0) and a chord tone (eighth 4); tier 1 adds
+   octave/fifth pops on 2-3; tier 2 (biome >= 2, with kick/hats) fills
+   eighths 1 and 5 with root repeats and walks 6-7 into the next root,
+   so at storm altitude the bass plays urgent continuous eighths and is
+   never root-only. Winter colour (bars 13-16, winter phrases): B -> Bb
+   flattens the colour toward natural minor (see stormWinterMidi). */
+const STEP1 = 60 / 116 / 2;
+const CHORDS1 = [
+  [57,60,64],[57,60,64],[57,60,65],[59,64,68], [57,60,64],[57,60,64],[57,60,65],[59,64,68],
+  [57,60,64],[59,62,67],[57,60,65],[59,64,68], [57,60,64],[57,62,65],[59,64,68],[57,60,69]];
+const BAR_DYN1 = [0.72,0.75,0.80,0.88,0.84,0.87,0.92,1.00, 0.78,0.84,0.90,0.96,0.92,0.95,1.00,0.94];
+const BASS1 = [
+  [[0,33,1,1.00,0],[1,33,1,0.50,2],[2,45,1,0.56,1],[3,40,1,0.62,1],[4,36,1,0.78,0],[5,40,1,0.50,2],[6,38,1,0.48,2],[7,40,1,0.56,2]], // Am
+  [[0,33,1,1.00,0],[1,33,1,0.50,2],[2,45,1,0.56,1],[3,36,1,0.60,1],[4,40,1,0.78,0],[5,36,1,0.50,2],[6,33,1,0.48,2],[7,31,1,0.56,2]], // Am (walks to F)
+  [[0,29,1,1.00,0],[1,29,1,0.50,2],[2,41,1,0.56,1],[3,36,1,0.60,1],[4,33,1,0.76,0],[5,36,1,0.50,2],[6,31,1,0.48,2],[7,32,1,0.58,2]], // F (walks to E)
+  [[0,28,1,1.00,0],[1,28,1,0.50,2],[2,40,1,0.58,1],[3,35,1,0.62,1],[4,32,1,0.78,0],[5,35,1,0.52,2],[6,38,1,0.50,2],[7,40,1,0.60,2]], // E (climbs to Am)
+  [[0,33,1,1.00,0],[1,33,1,0.50,2],[2,45,1,0.56,1],[3,40,1,0.64,1],[4,36,1,0.78,0],[5,40,1,0.50,2],[6,43,1,0.50,2],[7,45,1,0.58,2]], // Am
+  [[0,33,1,1.00,0],[1,33,1,0.50,2],[2,40,1,0.56,1],[3,45,1,0.64,1],[4,38,1,0.76,0],[5,36,1,0.50,2],[6,33,1,0.48,2],[7,31,1,0.56,2]], // Am (walks to F)
+  [[0,29,1,1.00,0],[1,29,1,0.50,2],[2,41,1,0.56,1],[3,36,1,0.62,1],[4,33,1,0.76,0],[5,38,1,0.50,2],[6,35,1,0.50,2],[7,32,1,0.60,2]], // F (walks to E)
+  [[0,28,1,1.00,0],[1,28,1,0.52,2],[2,40,1,0.58,1],[3,35,1,0.64,1],[4,32,2,0.80,0],[6,40,1,0.54,2],[7,45,1,0.64,2]], // E (half cadence)
+  [[0,33,1,1.00,0],[1,33,1,0.50,2],[2,45,1,0.58,1],[3,40,1,0.62,1],[4,36,1,0.80,0],[5,40,1,0.52,2],[6,38,1,0.50,2],[7,36,1,0.56,2]], // Am
+  [[0,31,1,1.00,0],[1,31,1,0.50,2],[2,43,1,0.56,1],[3,38,1,0.62,1],[4,35,1,0.78,0],[5,38,1,0.50,2],[6,36,1,0.48,2],[7,33,1,0.56,2]], // G (walks to F)
+  [[0,29,1,1.00,0],[1,29,1,0.50,2],[2,41,1,0.56,1],[3,36,1,0.60,1],[4,33,1,0.78,0],[5,36,1,0.50,2],[6,31,1,0.48,2],[7,32,1,0.58,2]], // F (walks to E)
+  [[0,28,1,1.00,0],[1,28,1,0.50,2],[2,40,1,0.58,1],[3,35,1,0.62,1],[4,32,1,0.80,0],[5,35,1,0.52,2],[6,38,1,0.52,2],[7,40,1,0.60,2]], // E (climbs to Am)
+  [[0,33,1,1.00,0],[1,33,1,0.52,2],[2,45,1,0.58,1],[3,40,1,0.64,1],[4,36,1,0.80,0],[5,40,1,0.52,2],[6,41,1,0.50,2],[7,40,1,0.56,2]], // Am (leans to Dm)
+  [[0,38,1,1.00,0],[1,38,1,0.50,2],[2,50,1,0.56,1],[3,45,1,0.62,1],[4,41,1,0.78,0],[5,45,1,0.50,2],[6,40,1,0.50,2],[7,35,1,0.58,2]], // Dm (falls to E)
+  [[0,28,1,1.00,0],[1,28,1,0.52,2],[2,32,1,0.60,1],[3,40,1,0.64,1],[4,35,1,0.82,0],[5,40,1,0.54,2],[6,44,1,0.56,2],[7,45,1,0.64,2]], // E (dominant climb)
+  [[0,33,2,1.00,0],[2,40,1,0.58,1],[3,36,1,0.60,1],[4,45,1,0.80,0],[5,40,1,0.52,2],[6,36,1,0.50,2],[7,38,1,0.54,2]], // Am (final, back to loop)
+];
+const THEME1 = [
+  [0,0,69,1,0.90],[0,1,72,1,0.85],[0,2,76,2,0.95],[0,4,74,1,0.85],[0,5,72,1,0.80],[0,6,69,2,0.88],
+  [1,0,69,1,0.88],[1,1,68,1,0.80],[1,2,69,1,0.85],[1,3,72,1,0.90],[1,4,76,2,0.95],[1,6,74,1,0.85],[1,7,72,1,0.80],
+  [2,0,69,2,0.90],[2,2,65,1,0.82],[2,3,69,1,0.88],[2,4,72,2,0.94],[2,6,69,2,0.85],
+  [3,0,68,2,0.92],[3,2,71,1,0.88],[3,3,68,1,0.82],[3,4,64,2,0.85],[3,6,68,2,0.90],
+  [4,0,69,1,0.90],[4,1,72,1,0.86],[4,2,76,1,0.95],[4,3,74,1,0.88],[4,4,72,2,0.90],[4,6,69,2,0.85],
+  [5,0,64,2,0.82],[5,2,69,2,0.90],[5,4,72,1,0.88],[5,5,76,1,0.95],[5,6,74,2,0.90],
+  [6,0,72,2,0.92],[6,2,69,1,0.85],[6,3,65,1,0.80],[6,4,69,2,0.90],[6,6,72,2,0.92],
+  [7,0,71,2,0.90],[7,2,68,2,0.88],[7,4,76,3,0.98],[7,7,74,1,0.85],
+  [8,0,69,1,0.90],[8,1,72,1,0.85],[8,2,76,2,0.96],[8,4,79,2,1.00],[8,6,76,2,0.90],
+  [9,0,74,2,0.90],[9,2,71,1,0.84],[9,3,74,1,0.88],[9,4,79,2,0.95],[9,6,74,2,0.88],
+  [10,0,77,2,0.95],[10,2,72,1,0.86],[10,3,69,1,0.84],[10,4,72,2,0.90],[10,6,69,2,0.85],
+  [11,0,76,2,0.94],[11,2,71,1,0.86],[11,3,68,1,0.84],[11,4,71,2,0.90],[11,6,68,2,0.88],
+  [12,0,69,2,0.90],[12,2,72,2,0.92],[12,4,76,2,0.96],[12,6,74,1,0.88],[12,7,72,1,0.82],
+  [13,0,74,2,0.92],[13,2,69,1,0.85],[13,3,74,1,0.90],[13,4,77,2,0.95],[13,6,74,2,0.88],
+  [14,0,71,1,0.90],[14,1,68,1,0.85],[14,2,71,1,0.90],[14,3,76,1,0.95],[14,4,80,3,1.00],[14,7,76,1,0.88],
+  [15,0,81,4,1.00],[15,4,76,2,0.85],[15,6,69,2,0.75]];
+const COUNTER1 = [
+  [3,4,52,2,0.70],[3,6,56,2,0.65], [7,0,52,2,0.65],[7,6,59,2,0.72],
+  [11,4,56,2,0.72],[11,6,52,2,0.68], [13,4,57,2,0.68],[14,6,52,2,0.70],[15,6,57,2,0.60]];
+function stormWinterMidi(m, bar){ if (bar >= 12 && m === 71) return 70; return m; }
+function stormBassMidi(m, bar, winterPhrase){
+  if (!winterPhrase || bar < 12) return m;
+  const pc = ((m % 12) + 12) % 12; return pc === 11 ? m - 1 : m;
+}
+/* ===== Track 2: "The Ancient Crown" =====
+   F major, 76 bpm eighths: majestic and hymn-like. Slower harmonic
+   rhythm (each chord held two bars): F F Bb Bb | F F C C || F F Bb Bb |
+   Dm Dm C F. The melody moves in long values with wide leaps (fifths
+   and sixths) and the written bass answers in the same broad gait:
+   tier 0 states root (eighth 0) and the fifth (eighth 4) in long notes,
+   tier 1 adds a chord-tone step on eighth 3, tier 2 adds passing and
+   approach notes on 6-7 that walk (often by fifth) into the next chord
+   two bars later. Winter colour (bars 13-16): A -> Ab and E -> Eb
+   borrow from F minor (see crownWinterMidi). */
+const STEP2 = 60 / 76 / 2;
+const CHORDS2 = [
+  [57,60,65],[57,60,65],[58,62,65],[58,62,65], [57,60,65],[57,60,65],[60,64,67],[60,64,67],
+  [57,60,65],[57,60,65],[58,62,65],[58,62,65], [57,62,65],[57,62,65],[60,64,67],[57,65,69]];
+const BAR_DYN2 = [0.60,0.62,0.66,0.68,0.70,0.72,0.78,0.84, 0.68,0.70,0.76,0.80,0.84,0.86,0.92,1.00];
+const BASS2 = [
+  [[0,29,2,1.00,0],[3,36,1,0.55,1],[4,41,2,0.78,0],[6,38,1,0.48,2],[7,36,1,0.54,2]], // F
+  [[0,29,2,1.00,0],[3,41,1,0.56,1],[4,36,2,0.76,0],[6,38,1,0.48,2],[7,41,1,0.56,2]], // F (opens to Bb)
+  [[0,34,2,1.00,0],[3,41,1,0.55,1],[4,46,2,0.78,0],[6,43,1,0.48,2],[7,41,1,0.54,2]], // Bb
+  [[0,34,2,1.00,0],[3,46,1,0.56,1],[4,41,2,0.76,0],[6,38,1,0.48,2],[7,36,1,0.56,2]], // Bb (falls to F)
+  [[0,29,2,1.00,0],[3,36,1,0.55,1],[4,41,2,0.78,0],[6,38,1,0.48,2],[7,41,1,0.54,2]], // F
+  [[0,29,2,1.00,0],[3,41,1,0.56,1],[4,36,2,0.76,0],[6,40,1,0.48,2],[7,43,1,0.56,2]], // F (rises to C)
+  [[0,36,2,1.00,0],[3,43,1,0.55,1],[4,48,2,0.78,0],[6,45,1,0.48,2],[7,43,1,0.54,2]], // C
+  [[0,36,3,1.00,0],[3,40,1,0.58,1],[4,43,2,0.76,0],[6,41,1,0.50,2],[7,38,1,0.56,2]], // C (half close, to F)
+  [[0,29,2,1.00,0],[3,36,1,0.55,1],[4,41,2,0.78,0],[6,38,1,0.48,2],[7,36,1,0.54,2]], // F
+  [[0,29,2,1.00,0],[3,41,1,0.56,1],[4,36,2,0.76,0],[6,38,1,0.48,2],[7,41,1,0.56,2]], // F (opens to Bb)
+  [[0,34,2,1.00,0],[3,41,1,0.55,1],[4,46,2,0.78,0],[6,43,1,0.48,2],[7,41,1,0.54,2]], // Bb
+  [[0,34,2,1.00,0],[3,46,1,0.58,1],[4,41,2,0.78,0],[6,40,1,0.50,2],[7,38,1,0.56,2]], // Bb (settles to Dm)
+  [[0,38,2,1.00,0],[3,45,1,0.55,1],[4,50,2,0.78,0],[6,48,1,0.48,2],[7,45,1,0.54,2]], // Dm
+  [[0,38,2,1.00,0],[3,50,1,0.56,1],[4,45,2,0.76,0],[6,43,1,0.48,2],[7,40,1,0.56,2]], // Dm (to C)
+  [[0,36,2,1.00,0],[3,43,1,0.58,1],[4,48,2,0.80,0],[6,45,1,0.52,2],[7,43,1,0.58,2]], // C (dominant breadth)
+  [[0,29,3,1.00,0],[3,36,1,0.54,1],[4,41,2,0.76,0],[6,36,1,0.48,2],[7,33,1,0.52,2]], // F (final, back to loop)
+];
+const THEME2 = [
+  [0,0,65,3,0.90],[0,3,69,1,0.85],[0,4,72,4,0.95],
+  [1,0,69,4,0.88],[1,4,67,2,0.82],[1,6,65,2,0.85],
+  [2,0,70,4,0.92],[2,4,74,4,0.95],
+  [3,0,70,3,0.90],[3,3,65,1,0.82],[3,4,69,4,0.92],
+  [4,0,65,3,0.90],[4,3,72,1,0.88],[4,4,77,4,0.96],
+  [5,0,74,4,0.90],[5,4,72,2,0.86],[5,6,69,2,0.84],
+  [6,0,67,4,0.90],[6,4,72,4,0.94],
+  [7,0,76,3,0.95],[7,3,72,1,0.86],[7,4,67,4,0.90],
+  [8,0,65,3,0.90],[8,3,69,1,0.85],[8,4,72,4,0.95],
+  [9,0,77,4,0.96],[9,4,74,2,0.90],[9,6,72,2,0.88],
+  [10,0,70,4,0.92],[10,4,74,4,0.95],
+  [11,0,77,3,0.95],[11,3,74,1,0.88],[11,4,70,4,0.92],
+  [12,0,69,4,0.90],[12,4,74,4,0.94],
+  [13,0,77,3,0.95],[13,3,74,1,0.88],[13,4,69,4,0.90],
+  [14,0,72,3,0.92],[14,3,76,1,0.90],[14,4,79,4,0.98],
+  [15,0,77,6,1.00],[15,6,72,2,0.75]];
+const COUNTER2 = [
+  [3,4,53,4,0.70],[7,4,55,4,0.70], [11,4,58,4,0.72],[13,4,57,4,0.68],[15,6,53,2,0.60]];
+function crownWinterMidi(m, bar){
+  if (bar >= 12){ if (m === 69) return 68; if (m === 64) return 63; }
+  return m;
+}
+function crownBassMidi(m, bar, winterPhrase){
+  if (!winterPhrase || bar < 12) return m;
+  const pc = ((m % 12) + 12) % 12; return (pc === 9 || pc === 4) ? m - 1 : m;
+}
+/* Track registry: track 0 reuses the original tables untouched, so
+   "The Climb" sounds exactly as before. Each entry carries its own
+   tempo (step), harmony, dynamics and winter transform. */
+function buildAt(events){ const o = {}; for (const e of events) o[e[0] * 8 + e[1]] = e; return o; }
+function buildBassAt(bass){ const o = {}; for (let b = 0; b < bass.length; b++) for (const e of bass[b]) o[b * 8 + e[0]] = e; return o; }
+const TRACKS = [
+  { name: 'The Climb', step: STEP, chords: CHORDS, roots: ROOTS, barDyn: BAR_DYN,
+    bassAt: BASS_AT, themeAt: THEME_AT, counterAt: COUNTER_AT, winterMidi, bassMidi },
+  { name: 'The Storm Spire', step: STEP1, chords: CHORDS1, roots: BASS1.map(b => b[0][1]), barDyn: BAR_DYN1,
+    bassAt: buildBassAt(BASS1), themeAt: buildAt(THEME1), counterAt: buildAt(COUNTER1),
+    winterMidi: stormWinterMidi, bassMidi: stormBassMidi },
+  { name: 'The Ancient Crown', step: STEP2, chords: CHORDS2, roots: BASS2.map(b => b[0][1]), barDyn: BAR_DYN2,
+    bassAt: buildBassAt(BASS2), themeAt: buildAt(THEME2), counterAt: buildAt(COUNTER2),
+    winterMidi: crownWinterMidi, bassMidi: crownBassMidi },
+];
+/* Select the score musicStart() will play. While music is running the
+   choice is queued in MUS.pendingTrack and applied by musTick only on
+   a loop boundary (step % 128 === 0), so no scheduler is ever doubled,
+   no note is cut mid-bar and no click is introduced; when nothing is
+   playing (or only the outro remains, which musTick retires before the
+   next start) the selection applies at once / on the next start. */
+function musicSetTrack(i){
+  if (!Number.isInteger(i) || i < 0 || i >= TRACKS.length) return;
+  if (!MUS.on){ MUS.track = i; MUS.pendingTrack = null; return; }
+  if (MUS.outro){ MUS.pendingTrack = i === MUS.track ? null : i; return; }
+  MUS.pendingTrack = i === MUS.track ? null : i;
+}
 /* generic note (kept signature): soft triangle into the music bus */
 function musNote(freq, t, dur, type, vol, pan, verbAmt){
   if (!AC) return;
@@ -678,8 +859,9 @@ function bassVoice(midi, t, dur, vel){
   route(g, musicBus || master, 0, 0.015, 0);
   o.start(t); o2.start(t); o.stop(t + dur + 0.02); o2.stop(t + dur + 0.02);
 }
-function padChord(bar, t, vel, winter, winterPhrase){
-  const tones = CHORDS[bar].map(m => winterPhrase ? winterMidi(m, bar) : m), dur = STEP * 8;
+function padChord(bar, t, vel, winter, winterPhrase, trk){
+  trk = trk || TRACKS[MUS.track];
+  const tones = trk.chords[bar].map(m => winterPhrase ? trk.winterMidi(m, bar) : m), dur = trk.step * 8;
   const f = AC.createBiquadFilter(); f.type = 'lowpass';
   f.frequency.value = 760 + S.biome * 160 - winter * 260; f.Q.value = 0.3;
   const g = AC.createGain();
@@ -745,7 +927,15 @@ function musTick(){
   if (MUS.nextT < AC.currentTime - 0.3) MUS.nextT = AC.currentTime + 0.05;
   while (MUS.nextT < AC.currentTime + 0.24){
     const t = Math.max(MUS.nextT, AC.currentTime + 0.02);
-    if (S.mode === 'pause'){ MUS.nextT += STEP; continue; }
+    // queued track switches land only here, on a loop boundary, before
+    // any note of the new loop is scheduled: the single interval keeps
+    // running, in-flight notes ring out, and the new tempo takes over
+    // from this step onward
+    if (MUS.pendingTrack != null && MUS.step % 128 === 0 && S.mode !== 'pause'){
+      MUS.track = MUS.pendingTrack; MUS.pendingTrack = null;
+    }
+    const trk = TRACKS[MUS.track], sd = trk.step;
+    if (S.mode === 'pause'){ MUS.nextT += sd; continue; }
     const s = MUS.step, bar = (s >> 3) % 16, inBar = s % 8;
     MUS.loop = Math.floor(s / 128);
     const playing = S.mode === 'play' || S.mode === 'title';   // 'over' hears only the one-shot outro cadence
@@ -754,41 +944,41 @@ function musTick(){
       const winter = Math.max(0, Math.min(1, (season - 0.55) / 0.45));
       const winterPhrase = winter > 0.35 && MUS.loop % 3 === 2;
       const over = S.mode === 'over';
-      const dyn = BAR_DYN[bar] * (over ? 0.42 : S.mode === 'title' ? 0.34 : 0.62 + biome * 0.13) * (S.endless ? 1 + Math.min(0.18, S.cycle * 0.03) : 1);
-      const ev = THEME_AT[s % 128];
+      const dyn = trk.barDyn[bar] * (over ? 0.42 : S.mode === 'title' ? 0.34 : 0.62 + biome * 0.13) * (S.endless ? 1 + Math.min(0.18, S.cycle * 0.03) : 1);
+      const ev = trk.themeAt[s % 128];
       if (ev && !(over && ev[3] < 2) && !(winterPhrase && inBar % 2 === 1 && ev[3] < 2)){
-        const midi = winterPhrase ? winterMidi(ev[2], bar) : ev[2];
-        leadVoice(midi, t, ev[3] * STEP * 0.94, 0.105 * ev[4] * dyn * 1.55, -0.06, winter);
-        if (biome >= 3) leadVoice(midi + 12, t, ev[3] * STEP * 0.9, 0.028 * ev[4] * dyn, 0.10, winter);
+        const midi = winterPhrase ? trk.winterMidi(ev[2], bar) : ev[2];
+        leadVoice(midi, t, ev[3] * sd * 0.94, 0.105 * ev[4] * dyn * 1.55, -0.06, winter);
+        if (biome >= 3) leadVoice(midi + 12, t, ev[3] * sd * 0.9, 0.028 * ev[4] * dyn, 0.10, winter);
       }
-      const cev = COUNTER_AT[s % 128];
+      const cev = trk.counterAt[s % 128];
       if (cev && ((biome >= 1 && bar >= 8) || biome >= 2))
-        musNote(mtof(winterPhrase ? winterMidi(cev[2], bar) : cev[2]), t, cev[3] * STEP * 0.92, 'triangle', 0.045 * cev[4] * dyn + 0.012, 0.22, 0.25);
+        musNote(mtof(winterPhrase ? trk.winterMidi(cev[2], bar) : cev[2]), t, cev[3] * sd * 0.92, 'triangle', 0.045 * cev[4] * dyn + 0.012, 0.22, 0.25);
       // written bass line: tier gates density by biome, roots land on the
       // kick eighths (0 and 4) once the kick enters, and a short gap
       // before each following note keeps the groove articulated
-      const bev = BASS_AT[s % 128];
+      const bev = trk.bassAt[s % 128];
       if (bev && bev[0] === inBar && biome >= bev[4])
-        bassVoice(bassMidi(bev[1], bar, winterPhrase), t, bev[2] * STEP * 0.92, 0.145 * bev[3] * (0.62 + dyn * 0.45));
+        bassVoice(trk.bassMidi(bev[1], bar, winterPhrase), t, bev[2] * sd * 0.92, 0.145 * bev[3] * (0.62 + dyn * 0.45));
       if (inBar === 0){
-        if (biome >= 1) padChord(bar, t, 0.030 + dyn * 0.020, winter, winterPhrase);
-        if (winter > 0.25 && !over) tremString((winterPhrase ? winterMidi(CHORDS[bar][2], bar) : CHORDS[bar][2]) + 12, t, STEP * 8, 0.020 * winter);
+        if (biome >= 1) padChord(bar, t, 0.030 + dyn * 0.020, winter, winterPhrase, trk);
+        if (winter > 0.25 && !over) tremString((winterPhrase ? trk.winterMidi(trk.chords[bar][2], bar) : trk.chords[bar][2]) + 12, t, sd * 8, 0.020 * winter);
       }
       if (biome >= 2){
         if (inBar === 0 || inBar === 4) kickVoice(t, 0.11 * dyn);
         if (inBar % 2 === 0) hatVoice(t, (inBar === 2 || inBar === 6) ? 0.030 : 0.018);
       }
       if (biome >= 1 && inBar % 2 === 0 && !(winterPhrase && inBar === 6)){
-        const arpTones = CHORDS[bar];
+        const arpTones = trk.chords[bar];
         const idx = [0, 1, 2, 1][(inBar >> 1) % 4];
-        musNote(mtof((winterPhrase ? winterMidi(arpTones[idx], bar) : arpTones[idx]) + 12), t, STEP * 1.15, 'triangle', (biome >= 2 ? 0.020 : 0.027) * dyn, inBar === 0 ? -0.2 : 0.2, 0.2);
+        musNote(mtof((winterPhrase ? trk.winterMidi(arpTones[idx], bar) : arpTones[idx]) + 12), t, sd * 1.15, 'triangle', (biome >= 2 ? 0.020 : 0.027) * dyn, inBar === 0 ? -0.2 : 0.2, 0.2);
       }
       if (biome >= 3 && (inBar === 0 || inBar === 2 || inBar === 4 || inBar === 6)){
-        const bt = (winterPhrase ? winterMidi(CHORDS[bar][[0, 2, 1, 2][inBar >> 1]], bar) : CHORDS[bar][[0, 2, 1, 2][inBar >> 1]]) + 24;
+        const bt = (winterPhrase ? trk.winterMidi(trk.chords[bar][[0, 2, 1, 2][inBar >> 1]], bar) : trk.chords[bar][[0, 2, 1, 2][inBar >> 1]]) + 24;
         bellVoice(bt, t, 0.026 * dyn + 0.006, inBar === 2 ? 0.28 : -0.14);
       }
     }
-    MUS.step++; MUS.nextT += STEP;
+    MUS.step++; MUS.nextT += sd;
   }
 }
 function musicStart(){
@@ -803,6 +993,9 @@ function musicStart(){
     musicBus.gain.setTargetAtTime(1.15, AC.currentTime, 0.1);
   }
   if (MUS.on) return;
+  // a selection queued during the outro (or before any start that never
+  // ran) becomes the track this fresh scheduler starts from bar 1
+  if (MUS.pendingTrack != null){ MUS.track = MUS.pendingTrack; MUS.pendingTrack = null; }
   MUS.on = true; MUS.step = 0; MUS.loop = 0; MUS.nextT = AC.currentTime + 0.08;
   MUS.timer = setInterval(musTick, 82);
 }
@@ -814,11 +1007,11 @@ function musicStart(){
 function musicOutro(){
   if (!AC || !MUS.on || MUS.outro) return;
   MUS.outro = true; MUS.outroT = AC.currentTime;
-  const t = AC.currentTime + 0.06;
-  padChord(15, t, 0.052, 0, false);          // final D-major tonic pad, one long bar
-  bassVoice(ROOTS[15], t, STEP * 3, 0.12);   // low tonic under it
-  bassVoice(ROOTS[15] + 7, t + STEP * 4, STEP * 1.6, 0.07); // soft fifth, then home
-  bassVoice(ROOTS[15], t + STEP * 6, STEP * 1.8, 0.10);
+  const t = AC.currentTime + 0.06, trk = TRACKS[MUS.track], sd = trk.step;
+  padChord(15, t, 0.052, 0, false, trk);     // final tonic pad of the playing track, one long bar
+  bassVoice(trk.roots[15], t, sd * 3, 0.12);   // low tonic under it
+  bassVoice(trk.roots[15] + 7, t + sd * 4, sd * 1.6, 0.07); // soft fifth, then home
+  bassVoice(trk.roots[15], t + sd * 6, sd * 1.8, 0.10);
   if (musicBus){
     musicBus.gain.cancelScheduledValues(t);
     musicBus.gain.setValueAtTime(musicBus.gain.value, t);
@@ -859,12 +1052,37 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => { keysDown[e.key.toLowerCase()] = false; });
 window.addEventListener('blur', () => { for (const k in keysDown) keysDown[k] = false; });
 let primaryPtrId = null;
-function setPointer(e){
-  // touch aims above the fingertip so the sprout is not hidden under it;
-  // only the primary (first) pointer steers: a second finger is surge-only
-  // and must never yank the aim across the screen
+const touchAim = { x: 0, y: 0, lastX: 0, lastY: 0, init: false };
+function setPointer(e, isDown){
+  // only the primary (first) pointer steers: a second finger is
+  // surge-only and must never yank the aim across the screen
   if (primaryPtrId !== null && e.pointerId !== primaryPtrId) return;
-  S.pointer = { x: e.clientX, y: e.clientY - (e.pointerType === 'touch' ? 64 : 0) };
+  if (e.pointerType !== 'touch'){
+    S.pointer = { x: e.clientX, y: e.clientY };
+    return;
+  }
+  // Touch steers RELATIVELY, like a drag stick: the aim point starts
+  // ahead of the sprout and then follows the finger's movement (x1.35),
+  // never the finger itself. The finger can rest low on the screen,
+  // clear of the action, small drags make small turns, and lifting and
+  // re-touching resumes from the same aim instead of snapping to
+  // wherever the finger lands.
+  if (isDown){
+    touchAim.lastX = e.clientX; touchAim.lastY = e.clientY;
+    if (!touchAim.init){
+      touchAim.init = true;
+      touchAim.x = sx(S.tip.x) + Math.cos(S.heading) * 150;
+      touchAim.y = sy(S.tip.y) + Math.sin(S.heading) * 150;
+    }
+  } else {
+    touchAim.x += (e.clientX - touchAim.lastX) * 1.35;
+    touchAim.y += (e.clientY - touchAim.lastY) * 1.35;
+    touchAim.lastX = e.clientX; touchAim.lastY = e.clientY;
+  }
+  touchAim.x = Math.max(14, Math.min(W - 14, touchAim.x));
+  touchAim.y = Math.max(64, Math.min(H - 14, touchAim.y));
+  S.pointer = { x: touchAim.x, y: touchAim.y };
+  S.aimTouch = true;
 }
 const activePtrs = new Set();
 let mouseDown = false, mousePressAt = null;
@@ -872,22 +1090,28 @@ cvs.addEventListener('pointerdown', e => {
   activePtrs.add(e.pointerId);
   if (primaryPtrId === null) primaryPtrId = e.pointerId;
   if (e.pointerType === 'mouse'){ mouseDown = true; mousePressAt = { x: e.clientX, y: e.clientY }; }
-  setPointer(e); cvs.setPointerCapture(e.pointerId);
+  setPointer(e, true); cvs.setPointerCapture(e.pointerId);
 });
-cvs.addEventListener('pointermove', e => { setPointer(e); });
+cvs.addEventListener('pointermove', e => {
+  // coalesced events carry every intermediate position the browser
+  // sampled: replaying them keeps fast drags smooth instead of steppy
+  const evs0 = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  const evs = evs0.length ? evs0 : [e];
+  for (const ev of evs) setPointer(ev);
+});
 cvs.addEventListener('pointerup', e => {
   activePtrs.delete(e.pointerId);
   if (e.pointerId === primaryPtrId) primaryPtrId = activePtrs.size ? [...activePtrs][0] : null;
   if (e.pointerType === 'mouse'){ mouseDown = false; mousePressAt = null; }
   // releasing the mouse must not drop the aim: hover keeps steering.
   // Touch aims only while a finger is down, so it clears with the last one.
-  else if (activePtrs.size === 0) S.pointer = null;
+  else if (activePtrs.size === 0){ S.pointer = null; S.aimTouch = false; }
 });
 cvs.addEventListener('pointercancel', e => {
   activePtrs.delete(e.pointerId);
   if (e.pointerId === primaryPtrId) primaryPtrId = activePtrs.size ? [...activePtrs][0] : null;
   if (e.pointerType === 'mouse'){ mouseDown = false; mousePressAt = null; }
-  else if (activePtrs.size === 0) S.pointer = null;
+  else if (activePtrs.size === 0){ S.pointer = null; S.aimTouch = false; }
 });
 /* ---------------- controller (Gamepad API) ----------------
    Left stick or D-pad steers, A / RT / RB surges, Start (☰) pauses,
@@ -1001,10 +1225,10 @@ bindStart('playbtn', () => startGame(false));
 bindStart('endlessbtn', () => startGame(true));
 bindStart('againbtn', () => startGame(S.endless));
 document.getElementById('sharebtn').addEventListener('click', async () => {
-  const h = S.endless ? Math.floor(S.height) : Math.min(120, Math.floor(S.height));
+  const h = S.endless ? Math.floor(S.height) : Math.min(LEVELS[S.levelIdx].goal, Math.floor(S.height));
   const text = S.won && !S.endless
     ? `I reached the Treetop in ${fmtTime(S.time)} (grade ${gradeFor(S.score)}, score ${Math.round(S.score).toLocaleString('en-CA')}). Can you beat it? ${location.href}`
-    : `I climbed ${h} m toward the Treetop (score ${Math.round(S.score).toLocaleString('en-CA')}). The canopy is 120 m. ${location.href}`;
+    : `I climbed ${h} m toward the Treetop (score ${Math.round(S.score).toLocaleString('en-CA')}). The canopy is ${LEVELS[S.levelIdx].goal} m. ${location.href}`;
   try { await navigator.clipboard.writeText(text); toast('Result copied'); }
   catch (e) {
     const ta = document.createElement('textarea');
@@ -1025,12 +1249,40 @@ function startGame(endless){
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   audio(); if (AC && AC.state === 'suspended') AC.resume();
   S.endless = !!endless;
+  S.levelIdx = curLevel;
+  if (typeof musicSetTrack === 'function') musicSetTrack(LEVELS[curLevel].music);
   simAcc = 0;
+  touchAim.init = false; S.aimTouch = false;
   reset(); S.mode = 'play';
   S.stats.plays++; saveStats();
   show('title', false); show('over', false); show('pause', false); $('hud').classList.add('on');
   toast(S.endless ? 'Endless Autumn. Just keep growing' : 'Grow! Reach the light');
   musicStart();
+}
+/* Level select on the title card: name, height, its score, and your
+   record on it. Picking a level also cues its music. */
+function renderLevelUI(){
+  const row = document.getElementById('levelrow');
+  if (!row) return;
+  row.innerHTML = '';
+  LEVELS.forEach((L, i) => {
+    const r = levelRecords[L.id];
+    const b = document.createElement('button');
+    b.className = 'lvlchip' + (i === curLevel ? ' sel' : '');
+    b.innerHTML = `<b>${L.name}</b>${L.goal} m · ♪ ${TRACKS[L.music].name}` +
+      (r && r.won ? `<br><span class="rec">★ won${r.time ? ' in ' + fmtTime(r.time) : ''} · best ${r.best} m</span>`
+                 : r && r.best ? `<br><span class="rec">best ${r.best} m</span>` : '');
+    b.addEventListener('click', () => {
+      curLevel = i; S.levelIdx = i;
+      store.set('treetop-level', String(i));
+      renderLevelUI(); reset();
+    });
+    row.appendChild(b);
+  });
+  const L = LEVELS[curLevel];
+  const desc = document.getElementById('lvldesc');
+  if (desc) desc.innerHTML = `<b>Reach the treetop at ${L.goal} m before winter.</b> ${L.tag} The season bar is your clock, and your sap is your life.`;
+  if (typeof musicSetTrack === 'function') musicSetTrack(L.music);
 }
 function syncSoundBtn(){ $('soundbtn').textContent = 'Sound: ' + (S.muted ? 'off' : 'on'); }
 function toggleMute(){
@@ -1041,8 +1293,8 @@ function pauseGame(on){
   if (on){
     if (S.mode !== 'play') return;
     S.mode = 'pause';
-    const h = S.endless ? Math.floor(S.height) : Math.min(120, Math.floor(S.height));
-    $('pause-stats').textContent = 'At ' + h + ' m · score ' + Math.floor(S.score).toLocaleString('en-CA') + (S.endless ? ' · Endless Autumn' : ' of 120 m');
+    const h = S.endless ? Math.floor(S.height) : Math.min(LEVELS[S.levelIdx].goal, Math.floor(S.height));
+    $('pause-stats').textContent = 'At ' + h + ' m · score ' + Math.floor(S.score).toLocaleString('en-CA') + (S.endless ? ' · Endless Autumn' : ' of ' + LEVELS[S.levelIdx].goal + ' m');
     syncSoundBtn();
     show('pause', true);
     const b = $('resumebtn'); if (b && b.focus) b.focus();
@@ -1058,13 +1310,19 @@ function quitToTitle(){
   reset(); S.mode = 'title';
   $('hud').classList.remove('on');
   show('title', true);
-  bestLine();
+  bestLine(); renderLevelUI();
 }
 function saveStats(){ store.set('treetop-stats', JSON.stringify(S.stats)); }
 /* reduced motion: no screen shake, no slow motion (checked once) */
 const REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 /* the ghost: your best-scoring run, kept so the next run can race it */
-function ghostKey(){ return S.endless ? 'treetop-ghost-endless' : 'treetop-ghost'; }
+function ghostKey(){
+  if (S.endless) return 'treetop-ghost-endless';
+  // each level races its own best; the first level keeps the legacy
+  // key so the ghost stored before levels existed carries over
+  const id = LEVELS[S.levelIdx].id;
+  return id === 'canopy' ? 'treetop-ghost' : 'treetop-ghost-' + id;
+}
 function loadGhost(){
   try {
     const g = JSON.parse(store.get(ghostKey()));
@@ -1076,7 +1334,7 @@ function gradeFor(score){ return score >= 1750 ? 'S' : score >= 1350 ? 'A' : sco
 function endGame(won, why){
   S.mode = 'over'; S.won = won;
   musicOutro();
-  const h = S.endless ? Math.floor(S.height) : Math.min(120, Math.floor(S.height));
+  const h = S.endless ? Math.floor(S.height) : Math.min(LEVELS[S.levelIdx].goal, Math.floor(S.height));
   if (won && !S.endless) S.score += Math.round((1 - S.season) * 600);   // time bonus
   S.score = Math.round(S.score);
   if (h > S.best) { S.best = h; store.set('treetop-best', String(h)); }
@@ -1091,6 +1349,15 @@ function endGame(won, why){
   if (S.rec.length > 10 && (!S.ghost || S.score > S.ghost.score)){
     S.ghost = { score: S.score, won, samples: S.rec };
     store.set(ghostKey(), JSON.stringify(S.ghost));
+  }
+  // and the level keeps its own record: best height, and the win time
+  if (!S.endless){
+    const id = LEVELS[S.levelIdx].id;
+    const r = levelRecords[id] || { best: 0, won: false, time: 0 };
+    r.best = Math.max(r.best, Math.floor(S.height));
+    if (won){ r.won = true; if (!r.time || S.time < r.time) r.time = Math.floor(S.time); }
+    levelRecords[id] = r;
+    store.set('treetop-level-records', JSON.stringify(levelRecords));
   }
   $('over-eyebrow').textContent = S.endless ? 'Endless Autumn' : (won ? 'You made it' : (why === 'sap' ? 'Out of sap' : 'Winter came'));
   $('over-title').textContent = won ? 'Treetop!' : (why === 'sap' ? 'The little sprout withered' : 'The frost got there first');
@@ -1147,7 +1414,7 @@ function floater(x, y, text, color){ floaters.push({ x, y, text, color: color ||
 
 /* ---------------- update ---------------- */
 function windAt(y, t){
-  const alt = Math.min(1, y / GOAL_Y);
+  const alt = Math.min(1, bandM(y) / 120);
   const base = (Math.sin(t * 0.6) * 0.55 + Math.sin(t * 1.7 + 1.3) * 0.3) * (0.12 + alt * 0.75);
   return base * WIND_FACTOR[biomeAt(y)];
 }
@@ -1165,7 +1432,7 @@ function update(dt){
     if (cyc > S.cycle){ S.cycle = cyc; toast('Autumn deepens'); sndBiome(); }
     S.season = (S.time % 100) / 100;
   } else {
-    S.season = Math.min(1, S.time / SEASON_S);
+    S.season = Math.min(1, S.time / LEVELS[S.levelIdx].season);
   }
   S.wind = windAt(S.tip.y, S.time);
   const prevHeight = S.height;
@@ -1285,7 +1552,7 @@ function update(dt){
   // sap (endless autumn deepens the drain each cycle). Death is NOT
   // judged here: pickups and the goal resolve first, below, so entering
   // an orb on the frame the bar empties still saves you.
-  const drainScale = S.endless ? 1 + Math.min(0.55, S.cycle * 0.09) : 1;
+  const drainScale = S.endless ? 1 + Math.min(0.55, S.cycle * 0.09) : LEVELS[S.levelIdx].drain;
   S.sap -= (SAP_DRAIN * drainScale * (surging ? 2.4 : 1) + (S.inShade ? SHADE_DRAIN : 0)) * dt;
   if (S.sap < 0) S.sap = 0;
 
@@ -1393,7 +1660,7 @@ function update(dt){
   // the view breathes out (zoom) as you gain the high light
   const targetCam = Math.max(0, S.tip.y - H * 0.38 - Math.sin(S.heading) * -46);
   S.camY += (targetCam - S.camY) * Math.min(1, dt * 3.2);
-  const zT = S.endless ? 0.94 : 1 - Math.min(1, S.tip.y / GOAL_Y) * 0.13;
+  const zT = S.endless ? 0.94 : 1 - Math.min(1, S.tip.y / goalY()) * 0.13;
   S.z += (zT - S.z) * Math.min(1, dt * 1.4);
   // particles and floaters
   for (let i = parts.length - 1; i >= 0; i--){
@@ -1410,7 +1677,7 @@ function update(dt){
   // endings, judged in the player's favour on ties: the goal first
   // (crossing the line on the frame the bar empties is a photo-finish
   // win), then sap, then the season
-  if (!S.endless && S.tip.y >= GOAL_Y && !S.winPending){
+  if (!S.endless && S.tip.y >= goalY() && !S.winPending){
     S.winPending = true; S.won = true;
     S.timeScale = REDUCED ? 1 : 0.22; S.slowT = REDUCED ? 0.35 : 1.5;
     petalBurst(S.tip.x, S.tip.y); sndWin();
@@ -1480,10 +1747,10 @@ function css(c, a){ return `rgba(${c[0]},${c[1]},${c[2]},${a === undefined ? 1 :
    deep shade and the world brightens steadily to the treetop. */
 function sceneProgress(){
   const y = S.endless ? (S.camY % GOAL_Y) : S.camY;
-  return Math.max(0, Math.min(1, (y + 240) / GOAL_Y));
+  return Math.max(0, Math.min(1, (y + 240) / (S.endless ? GOAL_Y : goalY())));
 }
 function drawSky(){
-  const s = S.season, alt = Math.min(1, S.camY / GOAL_Y);
+  const s = S.season, alt = Math.min(1, bandM(S.camY) / 120);
   const storm = stormAmt(S.camY + 300), crown = crownAmt(S.camY + 300);
   let top = mixc(mixc([106, 156, 208], [64, 62, 110], s), [86, 140, 210], alt * 0.35);
   let mid = mixc(mixc([178, 214, 188], [216, 132, 96], s), [170, 216, 190], alt * 0.3);
@@ -1877,7 +2144,7 @@ function drawGround(){
   }
 }
 function drawGoal(){
-  const gy = sy(GOAL_Y);
+  const gy = sy(goalY());
   if (gy < -260){
     // the treetop is still above the screen: a soft shaft of light at the
     // top edge keeps the goal present for the whole climb
@@ -1886,7 +2153,7 @@ function drawGoal(){
     ctx.fillStyle = shaft; ctx.fillRect(W / 2 - 90, 0, 180, 130);
     ctx.fillStyle = 'rgba(255,240,190,0.9)';
     ctx.font = '600 12px "Treetop Serif", Georgia, serif'; ctx.textAlign = 'center';
-    ctx.fillText('↑ THE TREETOP', W / 2, 118);
+    ctx.fillText('↑ ' + LEVELS[S.levelIdx].name.toUpperCase(), W / 2, 118);
     return;
   }
   if (gy > H + 80) return;
@@ -1981,7 +2248,7 @@ function drawGoal(){
   ctx.shadowColor = 'rgba(255,220,130,0.9)'; ctx.shadowBlur = 16;
   ctx.fillStyle = 'rgba(255,244,196,0.98)';
   ctx.font = '600 16px "Treetop Serif", Georgia, serif'; ctx.textAlign = 'center';
-  ctx.fillText('· THE TREETOP ·', W / 2, gy - 104);
+  ctx.fillText('· ' + LEVELS[S.levelIdx].name.toUpperCase() + ' ·', W / 2, gy - 104);
   ctx.restore();
 }
 /* ---- obstacles, drawn as forest things, not blobs on sticks ----
@@ -2425,14 +2692,26 @@ function drawWorld(){
     ctx.fillText(f.text, sx(f.x), sy(f.y));
   }
   ctx.globalAlpha = 1;
-  // the ghost of your best run: a gold sprout racing the same clock,
-  // with a faint dotted trail. Subtle on purpose; you race the tip.
+  // the ghost of your best run: a gold sprout racing the same clock.
+  // Like a racing-game ghost, its whole line is on the road with you:
+  // the path it has already run dots behind it, the path it is ABOUT
+  // to take traces ahead of it (so you can see which detours your best
+  // self took), and a delta tag says who is winning.
   if (S.mode === 'play' && S.ghost && S.ghost.samples.length){
     const gs = S.ghost.samples;
     while (S.ghostIdx < gs.length - 1 && gs[S.ghostIdx + 1].t <= S.time) S.ghostIdx++;
     const g0 = gs[S.ghostIdx], g1 = gs[Math.min(gs.length - 1, S.ghostIdx + 1)];
     const span = Math.max(0.001, g1.t - g0.t), fr = Math.min(1, Math.max(0, (S.time - g0.t) / span));
     const gx = g0.x + (g1.x - g0.x) * fr, gy = g0.y + (g1.y - g0.y) * fr;
+    // the road ahead: next ~10 s of the ghost's line, fading forward
+    const ahead = Math.min(gs.length - 1, S.ghostIdx + 50);
+    for (let i = S.ghostIdx + 2; i <= ahead; i += 2){
+      const px = sx(gs[i].x), py = sy(gs[i].y);
+      if (py < -12 || py > H + 12 || px < -12 || px > W + 12) continue;
+      ctx.fillStyle = `rgba(255,205,90,${(0.34 * (1 - (i - S.ghostIdx) / 55)).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(px, py, 2.1, 0, 6.283); ctx.fill();
+    }
+    // the road behind, slightly stronger
     ctx.fillStyle = 'rgba(255,205,90,0.30)';
     for (let i = Math.max(0, S.ghostIdx - 42); i <= S.ghostIdx; i += 3){
       const px = sx(gs[i].x), py = sy(gs[i].y);
@@ -2440,16 +2719,45 @@ function drawWorld(){
       ctx.beginPath(); ctx.arc(px, py, 1.8, 0, 6.283); ctx.fill();
     }
     const X = sx(gx), Y = sy(gy);
+    const dm = (gy - S.tip.y) / PX_PER_M;   // +: the ghost is higher
+    ctx.save();
+    ctx.font = '600 11px "Treetop Serif", Georgia, serif'; ctx.textAlign = 'center';
     if (Y > -20 && Y < H + 20){
-      const gg = ctx.createRadialGradient(X, Y, 1, X, Y, 17);
+      const gg = ctx.createRadialGradient(X, Y, 1, X, Y, 20);
       gg.addColorStop(0, 'rgba(255,215,110,0.5)'); gg.addColorStop(1, 'rgba(255,215,110,0)');
-      ctx.fillStyle = gg; ctx.fillRect(X - 17, Y - 17, 34, 34);
-      ctx.fillStyle = 'rgba(255,224,138,0.85)';
-      ctx.beginPath(); ctx.arc(X, Y, 4.2, 0, 6.283); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,224,138,0.8)'; ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.ellipse(X - 4.6, Y - 3.4, 4.4, 2.1, -0.6, 0, 6.283); ctx.stroke();
-      ctx.beginPath(); ctx.ellipse(X + 4.6, Y - 3.4, 4.4, 2.1, 0.6, 0, 6.283); ctx.stroke();
+      ctx.fillStyle = gg; ctx.fillRect(X - 20, Y - 20, 40, 40);
+      if (SPR.sprout){
+        ctx.save();
+        ctx.globalAlpha = 0.88;
+        ctx.translate(X, Y + Math.sin(S.time * 3 + gx * 0.05) * 1.6);
+        ctx.rotate(Math.sin(S.time * 2.2) * 0.08);
+        ctx.drawImage(SPR.sprout, -15, -14, 30, 27);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = 'rgba(255,224,138,0.85)';
+        ctx.beginPath(); ctx.arc(X, Y, 4.2, 0, 6.283); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,224,138,0.8)'; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.ellipse(X - 4.6, Y - 3.4, 4.4, 2.1, -0.6, 0, 6.283); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(X + 4.6, Y - 3.4, 4.4, 2.1, 0.6, 0, 6.283); ctx.stroke();
+      }
+      if (Math.abs(dm) > 0.4){
+        // the tag rides on the ghost, so it speaks for the ghost:
+        // + while it is above you, - once it has fallen behind
+        ctx.fillStyle = 'rgba(255,224,138,0.92)';
+        ctx.fillText((dm > 0 ? '+' : '') + dm.toFixed(0) + ' m', X, Y - 22);
+      }
+    } else if (Math.abs(dm) > 0.4){
+      // off-screen: a gold chevron at the edge points the way to it
+      const cxp = Math.max(44, Math.min(W - 44, X));
+      const above = Y <= -20, cy = above ? 84 : H - 88;
+      ctx.fillStyle = 'rgba(255,215,110,0.9)';
+      ctx.beginPath();
+      if (above){ ctx.moveTo(cxp, cy - 6); ctx.lineTo(cxp + 6, cy + 4); ctx.lineTo(cxp - 6, cy + 4); }
+      else { ctx.moveTo(cxp, cy + 6); ctx.lineTo(cxp + 6, cy - 4); ctx.lineTo(cxp - 6, cy - 4); }
+      ctx.closePath(); ctx.fill();
+      ctx.fillText((dm > 0 ? '+' : '') + dm.toFixed(0) + ' m', cxp, cy + (above ? 18 : -10));
     }
+    ctx.restore();
   }
   // frost wisps, drawn just under the tip so they read as the Crown's guards
   if (crownAmt(S.camY + 300) > 0.1){
@@ -2494,6 +2802,21 @@ function drawWorld(){
   if (S.chillT > 0){ hg.addColorStop(0, 'rgba(170,220,255,0.85)'); hg.addColorStop(1, 'rgba(170,220,255,0)'); }
   else { hg.addColorStop(0, 'rgba(190,255,170,0.75)'); hg.addColorStop(1, 'rgba(190,255,170,0)'); }
   ctx.fillStyle = hg; ctx.fillRect(tx - hgR - 2, ty - hgR - 2, (hgR + 2) * 2, (hgR + 2) * 2);
+  // touch aim made visible: while a finger steers, a dotted line and a
+  // pulsing ring show exactly where the sprout is growing toward, so
+  // the player aims by the reticle, not by guessing under a fingertip
+  if (S.aimTouch && S.pointer && S.mode === 'play'){
+    const ax = S.pointer.x, ay = S.pointer.y;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,233,168,0.55)'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+    ctx.setLineDash([2, 7]);
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(ax, ay); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(ax, ay, 11 + Math.sin(S.time * 5) * 1.6, 0, 6.283); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,233,168,0.9)';
+    ctx.beginPath(); ctx.arc(ax, ay, 2.4, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
   ctx.save(); ctx.translate(tx, ty); ctx.rotate(S.heading + Math.PI / 2);
   if (SPR.sprout){
     // the bud (at (0.52, 0.23) of the frame) rides on the tip point;
@@ -2668,8 +2991,8 @@ function drawCine(){
 /* ---------------- HUD ---------------- */
 const seasonNames = ['Spring', 'Summer', 'Autumn', 'Winter'];
 function drawHUD(){
-  $('hval').textContent = S.endless ? Math.floor(S.height) : Math.min(120, Math.floor(S.height));
-  $('hgoal').textContent = S.endless ? ' m · endless' : ' / 120 m';
+  $('hval').textContent = S.endless ? Math.floor(S.height) : Math.min(LEVELS[S.levelIdx].goal, Math.floor(S.height));
+  $('hgoal').textContent = S.endless ? ' m · endless' : ' / ' + LEVELS[S.levelIdx].goal + ' m';
   $('scoreval').textContent = Math.floor(S.score).toLocaleString('en-CA');
   const f = $('sapfill');
   f.style.width = S.sap.toFixed(1) + '%';
@@ -2773,6 +3096,11 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 document.addEventListener('contextmenu', e => { if (e.target === cvs) e.preventDefault(); });
+renderLevelUI();
+if (window.matchMedia && matchMedia('(pointer: coarse)').matches){
+  const hintEl = document.getElementById('hint');
+  if (hintEl) hintEl.innerHTML = 'Drag anywhere to steer · watch the gold ring · second finger to <b>surge</b>';
+}
 if (new URLSearchParams(location.search).get('autostart') === '1') startGame(false);
 </script>
 </body>

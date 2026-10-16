@@ -114,6 +114,13 @@ and the only question is how high you get. Height and score carry the run.
   magenta-keyed from
   `sprites-src/asset-*.jpg` into `sprites-final/`. Sprite sources
   and the keying script live in `sprites-src/`.
+- Three levels, three scores: **The First Canopy** (120 m),
+  **The Storm Spire** (170 m), and **The Ancient Crown** (220 m),
+  picked on the title card. Each level is its own seeded course with
+  a season clock sized to its height, a per-level ghost and best
+  record, and its own composed score ("The Climb", "The Storm
+  Spire", "The Ancient Crown") switched at loop boundaries by
+  `musicSetTrack()`.
 - A cinematic layer borrows its staging from Krillbite's *The Plan*:
   light shafts behind the silhouettes that widen and warm as the
   crown nears, backlit motes drifting in the light, out-of-focus
