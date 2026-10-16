@@ -73,7 +73,9 @@ and the only question is how high you get. Height and score carry the run.
   simulation. Pickup chimes are glass bells pitched in the score's key,
   and a sun chain brightens the chime as it climbs. At game
   over the score resolves onto a final tonic chord and fades to
-  silence instead of looping behind the results card.
+  silence instead of looping behind the results card. Coming back
+  from another app resumes playback. iOS marks the context
+  interrupted rather than suspended, and that state is resumed too.
 - Best height, lifetime stats, and best score persist in `localStorage`.
 - **Controller:** any standard gamepad steers with the left stick or
   D-pad, surges on the bottom face button or right trigger, pauses on

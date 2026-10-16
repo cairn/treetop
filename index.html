@@ -637,6 +637,13 @@ function reset(){
 let AC = null, master = null, musicBus = null, sfxBus = null, bedBus = null;
 let verbNode = null, verbGain = null, delayNode = null, padDuck = null;
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+// iOS Safari reports "interrupted" after an app switch, not "suspended".
+function audioStalled(state){ return state === 'suspended' || state === 'interrupted'; }
+function wakeAudio(){
+  if (!AC || S.muted || !audioStalled(AC.state)) return;
+  const p = AC.resume();
+  if (p && p.catch) p.catch(() => {});
+}
 function audio(){
   if (AC) return AC;
   try {
@@ -668,6 +675,7 @@ function audio(){
     const dWet = AC.createGain(); dWet.gain.value = 0.13;
     delayNode.connect(fbFilt); fbFilt.connect(fb); fb.connect(delayNode);
     delayNode.connect(dWet); dWet.connect(master);
+    AC.onstatechange = () => { if (!document.hidden) wakeAudio(); };
   } catch (e) { AC = null; }
   return AC;
 }
@@ -1500,8 +1508,8 @@ function pollGamepad(){
   pad.prev = gp.buttons.map(b => !!b.pressed);
 }
 document.getElementById('pausebtn').addEventListener('click', () => pauseGame(true));
-window.addEventListener('pointerdown', () => { audio(); if (AC && AC.state === 'suspended') AC.resume(); musicStart(); });
-window.addEventListener('keydown', () => { audio(); if (AC && AC.state === 'suspended') AC.resume(); musicStart(); });
+window.addEventListener('pointerdown', () => { audio(); wakeAudio(); musicStart(); });
+window.addEventListener('keydown', () => { audio(); wakeAudio(); musicStart(); });
 document.getElementById('resumebtn').addEventListener('click', () => pauseGame(false));
 document.getElementById('restartbtn').addEventListener('click', () => startGame(S.endless));
 document.getElementById('soundbtn').addEventListener('click', () => toggleMute());
@@ -1550,7 +1558,7 @@ function startGame(endless){
   // a clicked button keeps keyboard focus; without this, pressing Enter
   // or Space mid-run "clicks" it again and restarts the run
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  audio(); if (AC && AC.state === 'suspended') AC.resume();
+  audio(); wakeAudio();
   S.endless = !!endless;
   S.levelIdx = curLevel;
   if (typeof musicSetTrack === 'function') musicSetTrack(LEVELS[curLevel].music);
@@ -3812,8 +3820,9 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden){
     for (const k in keysDown) keysDown[k] = false;
     if (S.mode === 'play' && !S.winPending) pauseGame(true);
-  }
+  } else wakeAudio();
 });
+window.addEventListener('pageshow', () => wakeAudio());
 document.addEventListener('contextmenu', e => { if (e.target === cvs) e.preventDefault(); });
 renderLevelUI();
 if (window.matchMedia && matchMedia('(pointer: coarse)').matches){

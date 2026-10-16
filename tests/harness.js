@@ -137,6 +137,8 @@ const suites = {
     console.log('r does not restart from pause:', run('S.mode') === 'pause' && run('S.stats.plays') === plays ? 'OK' : 'FAIL');
     key('Escape'); run('quitToTitle()');
     console.log('quit to title:', run('S.mode') === 'title' ? 'OK' : 'FAIL');
+    const stalled = run("audioStalled('interrupted') && audioStalled('suspended') && !audioStalled('running')");
+    console.log('ios interrupt counts as stalled audio:', stalled ? 'OK' : 'FAIL');
   },
   endless() {
     const { run, frames } = boot({});
