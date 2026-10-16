@@ -157,8 +157,9 @@ window, 14-16 October 2026.
   [`docs/win.png`](docs/win.png) · [`docs/portrait.png`](docs/portrait.png)
   (phone layout) · share card [`docs/share.png`](docs/share.png).
 - **Balance, measured:** scripted playtest bots drive the real game
-  code. A passive centre-line run starves at ~52 m; an orb-seeking run
-  wins in ~55 s against the 100-second season; a moderate run (quarter
+  code. A passive centre-line run starves short of the canopy (about
+  70-95 m, depending on the rain it catches); an orb-seeking run
+  wins in about 58 s against the 100-second season; a moderate run (quarter
   second steering reactions, imperfect aim, no surge) wins in ~58 s.
   The economy was tuned against those bots, not by feel.
 - **Performance, measured:** the game's own JavaScript costs about
