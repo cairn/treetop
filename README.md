@@ -4,8 +4,9 @@
 [Project Treetop Round 01 (Games)](https://twigpine.com/treetop).
 
 You are a sprout. Your branch never stops growing. Steer its tip with the
-mouse, touch, arrow keys, or a controller and climb 120 metres to the canopy before
-winter, or before your sap runs out.
+mouse, touch, arrow keys, or a controller. Three climbs: The First Canopy
+at 120 m, The Storm Spire at 170 m, and The Ancient Crown at 220 m, each
+before winter or before your sap runs out.
 
 ## Play
 
@@ -155,10 +156,11 @@ window, 14-16 October 2026.
   real gameplay (title, climb, Crown, win card) with an original piano
   loop. The in-game music is generative; the trailer score is a
   stand-in in the same pentatonic family.
-- **Screenshots:** [`docs/floor.png`](docs/floor.png) ·
-  [`docs/storm.png`](docs/storm.png) · [`docs/crown.png`](docs/crown.png) ·
-  [`docs/win.png`](docs/win.png) · [`docs/portrait.png`](docs/portrait.png)
-  (phone layout) · share card [`docs/share.png`](docs/share.png).
+- **Screenshots:** [`docs/title.png`](docs/title.png) ·
+  [`docs/floor.png`](docs/floor.png) · [`docs/storm.png`](docs/storm.png) ·
+  [`docs/crown.png`](docs/crown.png) · [`docs/win.png`](docs/win.png) ·
+  [`docs/portrait.png`](docs/portrait.png) (phone layout, with Surge) ·
+  share card [`docs/share.png`](docs/share.png).
 - **Balance, measured:** scripted playtest bots drive the real game
   code. A passive centre-line run starves short of the canopy (about
   70-95 m, depending on the rain it catches); an orb-seeking run

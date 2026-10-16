@@ -2958,12 +2958,6 @@ function drawGoal(){
     }
     ctx.restore();
   }
-  ctx.save();
-  ctx.fillStyle = 'rgba(255,244,220,0.82)';
-  ctx.font = '500 11px "Treetop Serif", Georgia, serif'; ctx.textAlign = 'center';
-  ctx.letterSpacing = '0.2em';
-  ctx.fillText(LEVELS[S.levelIdx].name.toUpperCase(), W / 2, gy - 96);
-  ctx.restore();
 }
 /* ---- obstacles, drawn as forest things, not blobs on sticks ----
    Collision geometry is unchanged (shade ellipse, rival trunk segments
