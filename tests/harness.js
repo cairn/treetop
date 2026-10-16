@@ -118,6 +118,47 @@ const suites = {
       frames(40);
       const h = run('S.heading');
       console.log('portrait steering heading:', h.toFixed(3), h < -0.15 && h > -0.6 ? 'OK' : 'FAIL (want near -0.375, not -0.785)'); }
+    { const { run } = boot({}, 390);
+      run('startGame(false); S.z = 0.94;');
+      const art = run(`(() => {
+        const half = stalkHalf(0);
+        const old = 8.6 * xs() * S.z;
+        const c = crownDraw({ width: 768, height: 686 }, 156);
+        const aspect = Math.abs(c.dw / c.dh - 768 / 686) < 1e-6 && Math.abs(c.dw - 156 * S.z) < 1e-6;
+        return { half, old, aspect, xs: xs() };
+      })()`);
+      console.log('phone wood keeps its thickness:', art.xs < 0.5 && Math.abs(art.half - 8.6 * 0.94) < 1e-6 && art.half > art.old * 2 ? 'OK' : 'FAIL');
+      console.log('crown bitmap keeps its aspect:', art.aspect ? 'OK' : 'FAIL');
+      const drawn = run(`(() => {
+        const img = { width: 768, height: 686 };
+        SPR.oakCanopy = img; SPR.blossomCanopy = img; SPR.pineCanopy = img;
+        SPR.sprig = { width: 100, height: 140 };
+        const draws = [];
+        const old = ctx.drawImage;
+        ctx.drawImage = (im, x, y, w, h) => draws.push({ im, w, h });
+        const rv = world.rivals[0];
+        S.camY = rv.baseY;
+        drawRivalTree(rv);
+        ctx.drawImage = old;
+        const crowns = draws.filter(d => d.im === img);
+        const sprigs = draws.filter(d => d.im === SPR.sprig);
+        const logical = (Math.abs(Math.round(rv.baseY)) % 3 === 1) ? 156 : 152;
+        const crownOk = crowns.length === 1 && Math.abs(crowns[0].w - logical * S.z) < 1e-6
+          && Math.abs(crowns[0].w / crowns[0].h - img.width / img.height) < 1e-6;
+        const sprigOk = sprigs.length === 3 && sprigs.every(d => d.w > 30 * S.z && d.w < 55 * S.z
+          && Math.abs(d.w / d.h - 100 / 140) < 1e-6);
+        return { crownOk, sprigOk, crowns: crowns.length, sprigs: sprigs.length };
+      })()`);
+      console.log('rival crown and sprigs draw at one scale:', drawn.crownOk && drawn.sprigOk ? 'OK' : 'FAIL ' + JSON.stringify(drawn)); }
+    { const { run, frames } = boot({});
+      run('startGame(false)');
+      run('holdSurge = true');
+      frames(2);
+      const on = run('S.surge') === true;
+      run('holdSurge = false');
+      frames(2);
+      const off = run('S.surge') === false;
+      console.log('surge button holds:', on && off ? 'OK' : 'FAIL'); }
   },
   pause() {
     const { run, frames, key } = boot({});

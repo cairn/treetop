@@ -34,8 +34,9 @@ Systems to master:
 - **Sap is life.** Growth drains it; sunlight refills it (+22); rain is
   a sip (+7); shade clouds drain it fast and slow growth.
 - **Surge.** Hold the mouse button, space, or a second finger to grow
-  45% faster at roughly double the drain. Sprint the Storm Band; drift
-  the Forest Floor. Speed is a resource decision, not a default.
+  45% faster at roughly double the drain. On a phone, hold the Surge
+  button (it sits opposite pause). Sprint the Storm Band; drift the
+  Forest Floor. Speed is a resource decision, not a default.
 - **Sun Chains.** Collect sunlight in quick succession to build a combo
   (up to x10). Chains multiply your **score** and raise the pitch of the
   pickup chime; they never feed you, so a straight line up the middle
