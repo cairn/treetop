@@ -4,8 +4,10 @@
 Two routes:
 - Magenta-keyed subjects (sprout, fruit): border flood fill with
   tolerance, edge feather, magenta despill via un-compositing.
-- Black-background glows (orb, wisp): alpha derived from luminance,
-  which composites like a glow over any background.
+- Black-background glows (orb, wisp, sky sun): alpha derived from
+  luminance, which composites like a glow over any background. The
+  sky sun's fringe is recoloured to warm light so it does not leave
+  a muddy ring on a blue sky.
 Output sizes stay <= 512 px on the long edge; palette quantization
 keeps the embedded weight low.
 """
@@ -94,6 +96,30 @@ def keyed_sprite(path, out_name, max_edge):
     return im
 
 
+def sky_sun(path, out_name, max_edge):
+    """Luminance glow whose fringe is stored as warm light.
+
+    Painted-on-black haze keeps its dark RGB, and that composites as
+    a muddy ring over a blue sky. The visible fringe is shifted toward
+    gold so the sun adds light instead.
+    """
+    img = Image.open(path).convert("RGB")
+    rgb = np.asarray(img).astype(np.float32)
+    lum = rgb.max(axis=2)
+    lift = 28.0
+    alpha = np.clip((lum - lift) / (255.0 - lift), 0.0, 1.0)
+    alpha = np.power(alpha, 1.08)
+    warm = np.array([255.0, 226.0, 150.0], dtype=np.float32)
+    fringe = np.clip((0.82 - alpha) / 0.82, 0.0, 1.0)[..., None]
+    lit = rgb * (1.0 - fringe) + warm * fringe
+    rgb = np.where(alpha[..., None] > 0, lit, rgb)
+    out = np.dstack([np.clip(rgb, 0, 255), alpha * 255.0]).astype(np.uint8)
+    im = Image.fromarray(out, "RGBA")
+    im.thumbnail((max_edge, max_edge), Image.LANCZOS)
+    save_quantized(im, out_name)
+    return im
+
+
 def glow_sprite(path, out_name, max_edge, lift=16):
     img = Image.open(path).convert("RGB")
     rgb = np.asarray(img).astype(np.float32)
@@ -127,6 +153,7 @@ def main():
     keyed_sprite(os.path.join(SRC, names["fruit"]), "fruit.png", 128)
     glow_sprite(os.path.join(SRC, names["orb"]), "orb.png", 160)
     glow_sprite(os.path.join(SRC, names["wisp"]), "wisp.png", 160)
+    sky_sun(os.path.join(SRC, "asset-sun.jpg"), "sun.png", 320)
     # obstacle and background assets (magenta-keyed generated art)
     for src, out, edge in [
         ("asset-tree-far.jpg", "tree-far.png", 256),
@@ -147,6 +174,7 @@ def main():
         ("asset-fox.jpg", "fox.png", 256),
         ("asset-rabbit.jpg", "rabbit.png", 160),
         ("asset-bluebird.jpg", "bluebird.png", 192),
+        ("asset-drop.jpg", "drop.png", 96),
     ]:
         keyed_sprite(os.path.join(SRC, src), out, edge)
     # takeoff ground: a full-frame soil cross-section, no keying needed

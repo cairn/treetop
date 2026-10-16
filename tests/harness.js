@@ -1,7 +1,7 @@
 /* TREETOP test harnesses: run the real game code headlessly in a vm
    with stubbed DOM/canvas and drive frames manually.
    Usage: node tests/harness.js [suite ...]
-   Suites: balance wisps keyboard critic pause endless gamepad grounded ghost  (default: all)
+   Suites: balance wisps keyboard critic pause endless gamepad grounded ghost captions  (default: all)
    The DOM stubs return an element for any id, so they cannot catch
    missing-node bugs; only real-browser captures can. */
 const fs = require('fs'), vm = require('vm'), path = require('path');
@@ -15,13 +15,14 @@ function boot(storageInit, width) {
     if (typeof k === 'string') return t[k] !== undefined ? t[k] : (() => {});
     return undefined;
   }, set: (t, k, v) => { t[k] = v; return true; } });
-  const el = id => ({ id, style: {}, textContent: '', classList: { toggle() {}, add() {}, remove() {} },
-    addEventListener() {}, setPointerCapture() {}, getContext: () => ctxStub });
+  const el = id => ({ id, style: {}, textContent: '', innerHTML: '', classList: { toggle() {}, add() {}, remove() {} },
+    addEventListener() {}, setPointerCapture() {}, appendChild() {}, getContext: () => ctxStub });
   const els = new Map();
   let simNow = 0, rafCb = null;
   const sandbox = { console, Math, JSON, setTimeout, clearTimeout,
     localStorage: { _d: { ...(storageInit || {}) }, getItem(k) { return this._d[k] ?? null; }, setItem(k, v) { this._d[k] = v; } },
-    document: { addEventListener() {}, createElement: () => ({ width: 0, height: 0, style: {}, getContext: () => ctxStub }),
+    document: { addEventListener() {}, createElement: () => ({ width: 0, height: 0, style: {}, className: '', innerHTML: '',
+      addEventListener() {}, appendChild() {}, getContext: () => ctxStub }),
       getElementById: id => { if (!els.has(id)) els.set(id, el(id)); return els.get(id); } },
     performance: { now: () => simNow }, location: { search: '', href: 'https://example.test/' }, URLSearchParams };
   sandbox.window = sandbox; sandbox.innerWidth = width || 1100; sandbox.innerHeight = 750; sandbox.devicePixelRatio = 1;
@@ -153,7 +154,8 @@ const suites = {
     console.log('gamepad stick steers up-left:', h.toFixed(3), h < -1.9 ? 'OK' : 'FAIL');
     btns[0].pressed = true; frames(3);
     console.log('gamepad A surges:', run('S.surge') === true || run('S.sap') < 100 ? 'OK' : 'FAIL');
-    console.log('playstation pad detected with shape glyphs:', run('pad.kind') === 'ps' && run(`document.getElementById('padline-title').innerHTML`).includes('✕') ? 'OK' : 'FAIL');
+    const padHtml = run(`document.getElementById('padline-title').innerHTML`);
+    console.log('playstation pad detected with shape glyphs:', run('pad.kind') === 'ps' && padHtml.includes('M1.8 1.8 L10.2 10.2') ? 'OK' : 'FAIL');
     btns[0].pressed = false; btns[9].pressed = true; frames(3);
     console.log('gamepad Start pauses:', run('S.mode') === 'pause' ? 'OK' : 'FAIL');
     btns[9].pressed = false; frames(2); btns[1].pressed = true; frames(3);
@@ -169,9 +171,10 @@ const suites = {
       const sprites = treeSprites.far.concat(treeSprites.near);
       const trees = draws.filter(d => sprites.some(s => s.c === d.img));
       const want = H * 0.68 + 6;
+      // bases sit on the ground line and jitter by at most 7.5px
       const ok = trees.length > 3 && trees.every(d => {
         const sp = sprites.find(s => s.c === d.img);
-        return Math.abs(d.y + sp.anchorY * (d.h / sp.h) - want) < 2;
+        return Math.abs(d.y + sp.anchorY * (d.h / sp.h) - want) < 8;
       });
       return { n: trees.length, ok };
     })()`);
@@ -204,6 +207,43 @@ const suites = {
     run('S.sap = 0.3; S.pointer = null;'); frames(30);
     const g2 = JSON.parse(sandbox.localStorage._d['treetop-ghost'] || 'null');
     console.log('worse run keeps ghost:', g2 && g1 && Math.round(g2.score) === Math.round(g1.score) ? 'OK' : 'FAIL');
+  },
+  captions() {
+    const curve = boot({}).run('({ z: introAlpha(0), mid: introAlpha(1), edge: introAlpha(4.6), out: introAlpha(6.2), late: introAlpha(7) })');
+    console.log('intro curve:', curve.z === 0 && curve.mid === 1 && curve.edge === 1 && curve.out === 0 && curve.late === 0 ? 'OK' : 'FAIL', JSON.stringify(curve));
+
+    const fresh = boot({});
+    fresh.run('startGame(false)');
+    const intro = fresh.run('({ g: S.showGoalCaption, h: S.showGhostCaption, ghost: S.ghost, mode: S.mode })');
+    console.log('first run introduces:', intro.g === true && intro.h === true && intro.ghost === null && intro.mode === 'play' ? 'OK' : 'FAIL', JSON.stringify(intro));
+    fresh.run('S.time = 2'); fresh.frames(1);
+    console.log('still showing before the fade:', fresh.run('S.showGoalCaption') === true && fresh.sandbox.localStorage._d['treetop-seen-goal-canopy'] == null ? 'OK' : 'FAIL');
+    fresh.run('S.time = 6.3'); fresh.frames(1);
+    const retired = fresh.run('({ g: S.showGoalCaption, h: S.showGhostCaption })');
+    const d = fresh.sandbox.localStorage._d;
+    console.log('goal retires after one look:', retired.g === false && d['treetop-seen-goal-canopy'] === '1' ? 'OK' : 'FAIL', JSON.stringify(retired));
+    console.log('no ghost, metre tag stays unlearned:', retired.h === true && d['treetop-seen-ghost'] == null ? 'OK' : 'FAIL');
+
+    const endless = boot({});
+    endless.run('startGame(true); S.time = 6.3'); endless.frames(1);
+    console.log('endless does not spend the goal intro:', endless.sandbox.localStorage._d['treetop-seen-goal-canopy'] == null && endless.run('S.showGoalCaption') === true ? 'OK' : 'FAIL');
+
+    const crown = boot({});
+    crown.run('curLevel = 2; startGame(false); S.time = 6.3'); crown.frames(1);
+    const cd = crown.sandbox.localStorage._d;
+    console.log('each level is introduced on its own:', cd['treetop-seen-goal-ancient'] === '1' && cd['treetop-seen-goal-canopy'] == null ? 'OK' : 'FAIL');
+
+    const samples = JSON.stringify({ score: 100, won: false, samples: Array.from({ length: 12 }, (_, i) => ({ t: i * 0.2, x: 0, y: i * 40 })) });
+    const raced = boot({ 'treetop-ghost': samples });
+    raced.run('startGame(false)');
+    console.log('ghost metres wait for a ghost:', raced.run('S.ghost && S.showGhostCaption') === true ? 'OK' : 'FAIL');
+    raced.run('S.time = 6.3'); raced.frames(1);
+    console.log('ghost metres retire once:', raced.run('S.showGhostCaption') === false && raced.sandbox.localStorage._d['treetop-seen-ghost'] === '1' ? 'OK' : 'FAIL');
+
+    const quiet = boot({ 'treetop-seen-goal-canopy': '1', 'treetop-seen-ghost': '1', 'treetop-ghost': samples });
+    quiet.run('startGame(false)');
+    const q = quiet.run('({ g: S.showGoalCaption, h: S.showGhostCaption })');
+    console.log('a later run stays quiet:', q.g === false && q.h === false ? 'OK' : 'FAIL', JSON.stringify(q));
   },
 };
 

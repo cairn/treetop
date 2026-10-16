@@ -70,7 +70,8 @@ and the only question is how high you get. Height and score carry the run.
   All synthesized with Web Audio (no audio files) through a bus mix with
   generated-impulse reverb, dotted-eighth delay, glue compression and
   limiting, over wind and rain noise beds driven by the actual weather
-  simulation. Pickup chimes are pitched in the score's key. At game
+  simulation. Pickup chimes are glass bells pitched in the score's key,
+  and a sun chain brightens the chime as it climbs. At game
   over the score resolves onto a final tonic chord and fades to
   silence instead of looping behind the results card.
 - Best height, lifetime stats, and best score persist in `localStorage`.
@@ -94,8 +95,8 @@ and the only question is how high you get. Height and score carry the run.
   motion on the win.
 - The test harnesses in `tests/harness.js` drive the real game code
   headlessly (balance bots, keyboard-only win, frost wisps, ghost,
-  pause menu, grounded background trees, and regression tests for the
-  critic rounds): `node tests/harness.js`.
+  pause menu, grounded background trees, caption introductions, and
+  regression tests for the critic rounds): `node tests/harness.js`.
 - Typography is embedded, not system-default: Baloo 2 for the logo
   and buttons, Quicksand for body text, and Fraunces (a soft serif)
   for HUD labels, numerals, and in-world text (latin subsets, SIL
@@ -110,10 +111,13 @@ and the only question is how high you get. Height and score carry the run.
   canopies, the shade canopy cloud, the leaf sprig the branch
   wears along its stalk, a painted soil cross-section for the
   takeoff ground, and wildlife (a deer and fox on the near hill, a
-  rabbit at the ground line, bluebirds crossing the sky), all
-  magenta-keyed from
-  `sprites-src/asset-*.jpg` into `sprites-final/`. Sprite sources
-  and the keying script live in `sprites-src/`.
+  rabbit at the ground line, bluebirds crossing the sky). The sun
+  that crosses the sky is a painted glow too, with the flat disc
+  kept until it loads. The solid sprites are magenta-keyed from
+  `sprites-src/asset-*.jpg` into `sprites-final/`; the sky sun is
+  luminance-keyed from `asset-sun.jpg`. Raindrops are a painted
+  teardrop (`drop.png`), with the flat ellipse kept until it loads.
+  Sprite sources and the keying script live in `sprites-src/`.
 - Three levels, three scores: **The First Canopy** (120 m),
   **The Storm Spire** (170 m), and **The Ancient Crown** (220 m),
   picked on the title card. Each level is its own seeded course with
